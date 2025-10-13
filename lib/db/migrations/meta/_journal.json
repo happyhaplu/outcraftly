@@ -8,6 +8,20 @@
       "when": 1726443359662,
       "tag": "0000_soft_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1750012800000,
+      "tag": "0001_add_senders_table",
+      "breakpoints": false
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1760355991450,
+      "tag": "0002_add_sender_stats_fields",
+      "breakpoints": false
     }
   ]
 }

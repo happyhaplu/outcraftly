@@ -5,6 +5,8 @@ import {
   text,
   timestamp,
   integer,
+  uniqueIndex,
+  real
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -68,10 +70,38 @@ export const invitations = pgTable('invitations', {
   status: varchar('status', { length: 20 }).notNull().default('pending'),
 });
 
+export const senders = pgTable(
+  'senders',
+  {
+    id: serial('id').primaryKey(),
+    teamId: integer('team_id')
+      .notNull()
+      .references(() => teams.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
+    host: varchar('host', { length: 255 }).notNull(),
+    port: integer('port').notNull(),
+    username: varchar('username', { length: 255 }).notNull(),
+    password: text('password').notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    bounceRate: real('bounce_rate').notNull().default(0),
+    quotaUsed: integer('quota_used').notNull().default(0),
+    quotaLimit: integer('quota_limit').notNull().default(1000)
+  },
+  (table) => ({
+    uniqueTeamEmail: uniqueIndex('senders_team_email_idx').on(
+      table.teamId,
+      table.email
+    )
+  })
+);
+
 export const teamsRelations = relations(teams, ({ many }) => ({
   teamMembers: many(teamMembers),
   activityLogs: many(activityLogs),
   invitations: many(invitations),
+  senders: many(senders)
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -87,6 +117,13 @@ export const invitationsRelations = relations(invitations, ({ one }) => ({
   invitedBy: one(users, {
     fields: [invitations.invitedBy],
     references: [users.id],
+  }),
+}));
+
+export const sendersRelations = relations(senders, ({ one }) => ({
+  team: one(teams, {
+    fields: [senders.teamId],
+    references: [teams.id],
   }),
 }));
 
@@ -122,6 +159,9 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type NewActivityLog = typeof activityLogs.$inferInsert;
 export type Invitation = typeof invitations.$inferSelect;
 export type NewInvitation = typeof invitations.$inferInsert;
+export type Sender = typeof senders.$inferSelect;
+export type NewSender = typeof senders.$inferInsert;
+export type SenderStatus = Sender['status'];
 export type TeamDataWithMembers = Team & {
   teamMembers: (TeamMember & {
     user: Pick<User, 'id' | 'name' | 'email'>;

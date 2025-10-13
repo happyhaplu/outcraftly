@@ -1,6 +1,13 @@
 import { desc, and, eq, isNull } from 'drizzle-orm';
 import { db } from './drizzle';
-import { activityLogs, teamMembers, teams, users } from './schema';
+import {
+  activityLogs,
+  senders,
+  teamMembers,
+  teams,
+  users,
+  type SenderStatus
+} from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
 
@@ -127,4 +134,80 @@ export async function getTeamForUser() {
   });
 
   return result?.team || null;
+}
+
+export async function getSendersForTeam(teamId: number) {
+  return await db
+    .select()
+    .from(senders)
+    .where(eq(senders.teamId, teamId))
+    .orderBy(desc(senders.createdAt));
+}
+
+export async function findSenderByEmail(teamId: number, email: string) {
+  const result = await db
+    .select()
+    .from(senders)
+    .where(and(eq(senders.teamId, teamId), eq(senders.email, email)))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function getSenderForTeam(teamId: number, senderId: number) {
+  return await db
+    .select()
+    .from(senders)
+    .where(and(eq(senders.teamId, teamId), eq(senders.id, senderId)))
+    .limit(1)
+    .then((rows) => rows[0] || null);
+}
+
+export async function updateSenderStatus(
+  teamId: number,
+  senderId: number,
+  status: SenderStatus
+) {
+  const [updated] = await db
+    .update(senders)
+    .set({ status })
+    .where(and(eq(senders.id, senderId), eq(senders.teamId, teamId)))
+    .returning();
+
+  return updated || null;
+}
+
+export async function deleteSender(teamId: number, senderId: number) {
+  await db
+    .delete(senders)
+    .where(and(eq(senders.id, senderId), eq(senders.teamId, teamId)));
+}
+
+export async function addSender(
+  teamId: number,
+  data: {
+    name: string;
+    email: string;
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    status?: string;
+  }
+) {
+  const [inserted] = await db
+    .insert(senders)
+    .values({
+      teamId,
+      name: data.name,
+      email: data.email,
+      host: data.host,
+      port: data.port,
+      username: data.username,
+      password: data.password,
+      status: data.status ?? 'active'
+    })
+    .returning();
+
+  return inserted;
 }

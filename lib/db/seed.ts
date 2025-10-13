@@ -1,6 +1,6 @@
 import { stripe } from '../payments/stripe';
 import { db } from './drizzle';
-import { users, teams, teamMembers } from './schema';
+import { users, teams, teamMembers, senders } from './schema';
 import { hashPassword } from '@/lib/auth/session';
 
 async function createStripeProducts() {
@@ -69,6 +69,35 @@ async function seed() {
     userId: user.id,
     role: 'owner',
   });
+
+  await db.insert(senders).values([
+    {
+      teamId: team.id,
+      name: 'Sales Team',
+      email: 'sales@example.com',
+      host: 'smtp.sales.example.com',
+      port: 587,
+      username: 'sales-user',
+      password: 'placeholder-secret',
+      status: 'verified',
+      bounceRate: 1.4,
+      quotaUsed: 420,
+      quotaLimit: 1000,
+    },
+    {
+      teamId: team.id,
+      name: 'Marketing',
+      email: 'marketing@example.com',
+      host: 'smtp.marketing.example.com',
+      port: 465,
+      username: 'marketing-user',
+      password: 'placeholder-secret',
+      status: 'active',
+      bounceRate: 3.1,
+      quotaUsed: 680,
+      quotaLimit: 1200,
+    },
+  ]);
 
   await createStripeProducts();
 }
