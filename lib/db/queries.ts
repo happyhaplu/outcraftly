@@ -6,6 +6,7 @@ import {
   teamMembers,
   teams,
   users,
+  contacts,
   type SenderStatus
 } from './schema';
 import { cookies } from 'next/headers';
@@ -210,4 +211,46 @@ export async function addSender(
     .returning();
 
   return inserted;
+}
+
+export async function getContactsForTeam(teamId: number) {
+  return await db
+    .select()
+    .from(contacts)
+    .where(eq(contacts.teamId, teamId))
+    .orderBy(desc(contacts.createdAt));
+}
+
+export async function insertContacts(
+  teamId: number,
+  rows: Array<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    company: string;
+    tags: string[];
+  }>
+) {
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  const result = await db
+    .insert(contacts)
+    .values(
+      rows.map((row) => ({
+        teamId,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        email: row.email,
+        company: row.company,
+        tags: row.tags
+      }))
+    )
+    .onConflictDoNothing({
+      target: [contacts.teamId, contacts.email]
+    })
+    .returning({ id: contacts.id });
+
+  return result.length;
 }

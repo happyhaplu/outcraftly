@@ -6,9 +6,12 @@ import {
   timestamp,
   integer,
   uniqueIndex,
-  real
+  real,
+  uuid,
+  jsonb
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -97,11 +100,31 @@ export const senders = pgTable(
   })
 );
 
+export const contacts = pgTable(
+  'contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: integer('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    firstName: varchar('first_name', { length: 100 }).notNull(),
+    lastName: varchar('last_name', { length: 100 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
+    company: varchar('company', { length: 255 }).notNull(),
+    tags: jsonb('tags').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    createdAt: timestamp('created_at').notNull().defaultNow()
+  },
+  (table) => ({
+    uniqueTeamEmail: uniqueIndex('contacts_team_email_idx').on(table.teamId, table.email)
+  })
+);
+
 export const teamsRelations = relations(teams, ({ many }) => ({
   teamMembers: many(teamMembers),
   activityLogs: many(activityLogs),
   invitations: many(invitations),
-  senders: many(senders)
+  senders: many(senders),
+  contacts: many(contacts)
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -125,6 +148,13 @@ export const sendersRelations = relations(senders, ({ one }) => ({
     fields: [senders.teamId],
     references: [teams.id],
   }),
+}));
+
+export const contactsRelations = relations(contacts, ({ one }) => ({
+  team: one(teams, {
+    fields: [contacts.teamId],
+    references: [teams.id]
+  })
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -161,6 +191,8 @@ export type Invitation = typeof invitations.$inferSelect;
 export type NewInvitation = typeof invitations.$inferInsert;
 export type Sender = typeof senders.$inferSelect;
 export type NewSender = typeof senders.$inferInsert;
+export type Contact = typeof contacts.$inferSelect;
+export type NewContact = typeof contacts.$inferInsert;
 export type SenderStatus = Sender['status'];
 export type TeamDataWithMembers = Team & {
   teamMembers: (TeamMember & {

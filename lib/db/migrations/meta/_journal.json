@@ -22,6 +22,13 @@
       "when": 1760355991450,
       "tag": "0002_add_sender_stats_fields",
       "breakpoints": false
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1760367042574,
+      "tag": "0003_add_contacts_table",
+      "breakpoints": false
     }
   ]
 }

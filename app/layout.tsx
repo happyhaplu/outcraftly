@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { getUser, getTeamForUser } from '@/lib/db/queries';
 import { SWRConfig } from 'swr';
+import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
   title: 'Next.js SaaS Starter',
@@ -42,6 +43,7 @@ export default function RootLayout({
         >
           {children}
         </SWRConfig>
+        <Toaster />
       </body>
     </html>
   );
