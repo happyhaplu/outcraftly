@@ -8,7 +8,8 @@ import {
   uniqueIndex,
   real,
   uuid,
-  jsonb
+  jsonb,
+  index
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
@@ -115,7 +116,8 @@ export const contacts = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow()
   },
   (table) => ({
-    uniqueTeamEmail: uniqueIndex('contacts_team_email_idx').on(table.teamId, table.email)
+    uniqueTeamEmail: uniqueIndex('contacts_team_email_idx').on(table.teamId, table.email),
+    tagsGinIndex: index('contacts_tags_gin_idx').using('gin', table.tags)
   })
 );
 

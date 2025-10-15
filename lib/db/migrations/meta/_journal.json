@@ -29,6 +29,13 @@
       "when": 1760367042574,
       "tag": "0003_add_contacts_table",
       "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1760534400000,
+      "tag": "0004_add_contacts_tags_index",
+      "breakpoints": false
     }
   ]
 }

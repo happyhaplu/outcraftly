@@ -238,7 +238,7 @@ export function ContactUpload({ onSuccess, onError, onFinished }: ContactUploadP
 
       resetFileState();
 
-      await mutate('/api/contacts');
+  await mutate((key) => typeof key === 'string' && key.startsWith('/api/contacts'));
       if (summary) {
         onSuccess?.(summary);
       }

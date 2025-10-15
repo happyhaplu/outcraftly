@@ -1,4 +1,4 @@
-import { desc, and, eq, isNull } from 'drizzle-orm';
+import { desc, and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { db } from './drizzle';
 import {
   activityLogs,
@@ -11,6 +11,7 @@ import {
 } from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
+import { normalizeTags } from '@/lib/validation/contact';
 
 export async function getUser() {
   const sessionCookie = (await cookies()).get('session');
@@ -213,14 +214,185 @@ export async function addSender(
   return inserted;
 }
 
-export async function getContactsForTeam(teamId: number) {
+export type ContactFilters = {
+  search?: string;
+  tag?: string;
+};
+
+export async function getContactsForTeam(teamId: number, filters: ContactFilters = {}) {
+  const conditions = [eq(contacts.teamId, teamId)];
+
+  if (filters.search) {
+    const searchTerm = `%${filters.search.trim().toLowerCase()}%`;
+    conditions.push(
+      sql`(
+        lower(${contacts.firstName}) LIKE ${searchTerm} OR
+        lower(${contacts.lastName}) LIKE ${searchTerm} OR
+        lower(${contacts.email}) LIKE ${searchTerm} OR
+        lower(${contacts.company}) LIKE ${searchTerm}
+      )`
+    );
+  }
+
+  if (filters.tag) {
+    const tagValue = filters.tag.trim();
+    if (tagValue.length > 0) {
+      conditions.push(
+        sql`EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${contacts.tags}) AS tag
+          WHERE lower(tag) = lower(${tagValue})
+        )`
+      );
+    }
+  }
+
+  const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
+
   return await db
     .select()
     .from(contacts)
-    .where(eq(contacts.teamId, teamId))
+    .where(whereCondition)
     .orderBy(desc(contacts.createdAt));
 }
 
+export async function updateContact(
+  teamId: number,
+  contactId: string,
+  data: {
+    firstName?: string;
+    lastName?: string;
+    company?: string;
+    tags?: string[];
+  }
+) {
+  const updatePayload: Partial<{
+    firstName: string;
+    lastName: string;
+    company: string;
+    tags: string[];
+  }> = {};
+
+  if (typeof data.firstName === 'string') {
+    updatePayload.firstName = data.firstName;
+  }
+  if (typeof data.lastName === 'string') {
+    updatePayload.lastName = data.lastName;
+  }
+  if (typeof data.company === 'string') {
+    updatePayload.company = data.company;
+  }
+  if (Array.isArray(data.tags)) {
+    updatePayload.tags = data.tags;
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return null;
+  }
+
+  const [updated] = await db
+    .update(contacts)
+    .set(updatePayload)
+    .where(and(eq(contacts.id, contactId), eq(contacts.teamId, teamId)))
+    .returning();
+
+  return updated ?? null;
+}
+
+export async function deleteContact(teamId: number, contactId: string) {
+  const result = await db
+    .delete(contacts)
+    .where(and(eq(contacts.teamId, teamId), eq(contacts.id, contactId)))
+    .returning({ id: contacts.id });
+
+  return result.length;
+}
+
+export async function bulkDeleteContacts(teamId: number, contactIds: string[]) {
+  if (contactIds.length === 0) {
+    return 0;
+  }
+
+  const result = await db
+    .delete(contacts)
+    .where(and(eq(contacts.teamId, teamId), inArray(contacts.id, contactIds)))
+    .returning({ id: contacts.id });
+
+  return result.length;
+}
+
+export async function addTagsToContacts(
+  teamId: number,
+  contactIds: string[],
+  tags: string[]
+) {
+  if (contactIds.length === 0) {
+    return { updated: 0, applied: 0 } as const;
+  }
+
+  const tagsToAdd = normalizeTags(tags);
+  if (tagsToAdd.length === 0) {
+    return { updated: 0, applied: 0 } as const;
+  }
+
+  return await db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: contacts.id, tags: contacts.tags })
+      .from(contacts)
+      .where(and(eq(contacts.teamId, teamId), inArray(contacts.id, contactIds)));
+
+    if (existing.length === 0) {
+      return { updated: 0, applied: 0 } as const;
+    }
+
+    let updated = 0;
+    let applied = 0;
+
+    for (const contact of existing) {
+      const currentTags = Array.isArray(contact.tags)
+        ? contact.tags.filter((tag): tag is string => typeof tag === 'string')
+        : [];
+
+      const seen = new Set<string>();
+      currentTags.forEach((tag) => {
+        if (typeof tag === 'string') {
+          const normalised = tag.trim().toLowerCase();
+          if (normalised.length > 0) {
+            seen.add(normalised);
+          }
+        }
+      });
+
+      const newTags: string[] = [];
+      for (const tag of tagsToAdd) {
+        const trimmed = tag.trim();
+        if (!trimmed) {
+          continue;
+        }
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        newTags.push(trimmed);
+      }
+
+      if (newTags.length === 0) {
+        continue;
+      }
+
+      await tx
+        .update(contacts)
+        .set({ tags: [...currentTags, ...newTags] })
+        .where(and(eq(contacts.id, contact.id), eq(contacts.teamId, teamId)));
+
+      updated += 1;
+      applied += newTags.length;
+    }
+
+    return { updated, applied } as const;
+  });
+}
 export async function insertContacts(
   teamId: number,
   rows: Array<{
@@ -253,4 +425,63 @@ export async function insertContacts(
     .returning({ id: contacts.id });
 
   return result.length;
+}
+
+export async function getDistinctContactTags(teamId: number) {
+  const result = await db.execute<{ tag: string | null }>(sql`
+    SELECT DISTINCT NULLIF(trim(tag), '') AS tag
+    FROM contacts, jsonb_array_elements_text(contacts.tags) AS tag
+    WHERE contacts.team_id = ${teamId}
+    ORDER BY tag ASC
+  `);
+
+  return Array.from(result)
+    .map((row) => row.tag)
+    .filter((tag): tag is string => Boolean(tag));
+}
+
+export async function updateContactForTeam(
+  teamId: number,
+  contactId: string,
+  data: {
+    firstName: string;
+    lastName: string;
+    company: string;
+    tags: string[];
+  }
+) {
+  const [updated] = await db
+    .update(contacts)
+    .set({
+      firstName: data.firstName,
+      lastName: data.lastName,
+      company: data.company,
+      tags: data.tags
+    })
+    .where(and(eq(contacts.id, contactId), eq(contacts.teamId, teamId)))
+    .returning();
+
+  return updated || null;
+}
+
+export async function deleteContactForTeam(teamId: number, contactId: string) {
+  const [deleted] = await db
+    .delete(contacts)
+    .where(and(eq(contacts.id, contactId), eq(contacts.teamId, teamId)))
+    .returning({ id: contacts.id });
+
+  return deleted ?? null;
+}
+
+export async function bulkDeleteContactsForTeam(teamId: number, contactIds: string[]) {
+  if (contactIds.length === 0) {
+    return 0;
+  }
+
+  const deleted = await db
+    .delete(contacts)
+    .where(and(eq(contacts.teamId, teamId), inArray(contacts.id, contactIds)))
+    .returning({ id: contacts.id });
+
+  return deleted.length;
 }

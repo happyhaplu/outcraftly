@@ -96,7 +96,7 @@ export function ContactFormModal({ open, onOpenChange, onSuccess }: ContactFormM
         throw new Error(data?.error ?? 'Failed to create contact.');
       }
 
-      await mutate('/api/contacts');
+  await mutate((key) => typeof key === 'string' && key.startsWith('/api/contacts'));
       const message = typeof data?.message === 'string' ? data.message : 'Contact created successfully';
       onSuccess(message);
       onOpenChange(false);
