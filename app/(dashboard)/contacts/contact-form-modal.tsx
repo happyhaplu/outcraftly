@@ -25,6 +25,7 @@ const initialValues: ContactFormValues = {
   lastName: '',
   email: '',
   company: '',
+  timezone: '',
   tags: ''
 };
 
@@ -77,6 +78,7 @@ export function ContactFormModal({ open, onOpenChange, onSuccess }: ContactFormM
         lastName: parsed.lastName,
         email: parsed.email,
         company: parsed.company,
+        timezone: parsed.timezone?.trim() ?? null,
         tags: parseTags(parsed.tags)
       };
 
@@ -202,6 +204,24 @@ export function ContactFormModal({ open, onOpenChange, onSuccess }: ContactFormM
             {errors.company && (
               <p className="text-xs text-destructive" role="alert">
                 {errors.company}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="contact-timezone">Timezone (optional)</Label>
+            <Input
+              id="contact-timezone"
+              value={values.timezone ?? ''}
+              onChange={handleChange('timezone')}
+              placeholder="America/New_York"
+              autoComplete="off"
+              aria-invalid={Boolean(errors.timezone)}
+            />
+            <p className="text-xs text-muted-foreground">Use an IANA timezone, e.g. America/Los_Angeles.</p>
+            {errors.timezone && (
+              <p className="text-xs text-destructive" role="alert">
+                {errors.timezone}
               </p>
             )}
           </div>

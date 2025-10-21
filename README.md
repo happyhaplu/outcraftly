@@ -74,6 +74,17 @@ You can listen for Stripe webhooks locally through their CLI to handle subscript
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
+### Sequence worker
+
+Set the `SEQUENCE_WORKER_SECRET` environment variable to a strong random string. This value is required to authenticate scheduled runs of the sequence delivery worker.
+
+- Run the worker manually with `pnpm worker:run [--limit <count>] [--team <teamId>]` during development.
+- Configure a cron job (e.g. Vercel Cron) to call `GET /api/internal/cron/sequence-worker?token=<SEQUENCE_WORKER_SECRET>` on a cadence that fits your sending limits. Optional query parameters:
+	- `limit`: Maximum deliveries to process in a single run (defaults to 25)
+	- `teamId`: Restrict a run to one workspace
+
+The endpoint returns a JSON payload with the worker metrics so you can monitor executions from your scheduler.
+
 ## Testing Payments
 
 To test Stripe payments, use the following test card details:

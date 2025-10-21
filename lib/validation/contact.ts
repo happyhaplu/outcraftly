@@ -16,7 +16,23 @@ const baseContactSchema = {
   company: z
     .string({ required_error: 'Company is required' })
     .trim()
-    .min(1, 'Company is required')
+    .min(1, 'Company is required'),
+  timezone: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined))
+    .refine((value) => {
+      if (!value) {
+        return true;
+      }
+      try {
+        new Intl.DateTimeFormat(undefined, { timeZone: value });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Enter a valid timezone')
 };
 
 export const contactFormSchema = z.object({
@@ -32,6 +48,7 @@ export const contactUpdateSchema = z
     firstName: baseContactSchema.firstName.optional(),
     lastName: baseContactSchema.lastName.optional(),
     company: baseContactSchema.company.optional(),
+    timezone: baseContactSchema.timezone.optional(),
     tags: z.array(z.string()).optional()
   })
   .refine(

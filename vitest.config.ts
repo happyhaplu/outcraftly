@@ -10,6 +10,15 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['tests/**/*.test.ts']
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx', 'app/**/__tests__/**/*.test.tsx'],
+    setupFiles: ['vitest.setup.ts'],
+    environmentMatchGlobs: [
+      ['**/*.test.tsx', 'jsdom']
+    ],
+    css: false
+  },
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: 'react'
   }
 });

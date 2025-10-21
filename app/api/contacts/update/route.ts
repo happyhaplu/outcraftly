@@ -39,6 +39,7 @@ export async function PATCH(request: Request) {
       firstName: parsed.data.firstName?.trim(),
       lastName: parsed.data.lastName?.trim(),
       company: parsed.data.company?.trim(),
+      timezone: parsed.data.timezone ?? undefined,
       tags: parsed.data.tags ? normalizeTags(parsed.data.tags) : undefined
     };
 
@@ -57,6 +58,7 @@ export async function PATCH(request: Request) {
           lastName: updated.lastName,
           email: updated.email,
           company: updated.company,
+          timezone: updated.timezone,
           tags: updated.tags ?? [],
           createdAt: updated.createdAt
         }
