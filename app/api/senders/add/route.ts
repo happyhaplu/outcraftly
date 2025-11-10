@@ -5,7 +5,10 @@ import {
   addSender,
   findSenderByEmail,
   getTeamForUser,
-  getUser
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
 import { encryptSecret } from '@/lib/security/encryption';
 import { senderFormSchema } from '@/lib/validation/sender';
@@ -20,10 +23,7 @@ function formatValidationError(error: ZodError) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -73,6 +73,13 @@ export async function POST(request: Request) {
 
     const sender = await addSender(team.id, {
       ...data,
+      inboundHost: data.inboundHost?.trim() ? data.inboundHost.trim() : null,
+      inboundPort:
+        typeof data.inboundPort === 'number' && Number.isFinite(data.inboundPort)
+          ? data.inboundPort
+          : null,
+      inboundSecurity: data.inboundSecurity ? data.inboundSecurity : null,
+      inboundProtocol: data.inboundProtocol ? data.inboundProtocol : null,
       password: encryptedPassword,
       status: 'active'
     });
@@ -85,14 +92,27 @@ export async function POST(request: Request) {
           email: sender.email,
           host: sender.host,
           port: sender.port,
+          smtpSecurity: sender.smtpSecurity,
           username: sender.username,
           status: sender.status,
-          createdAt: sender.createdAt
+          createdAt: sender.createdAt,
+          inboundHost: sender.inboundHost,
+          inboundPort: sender.inboundPort,
+          inboundSecurity: sender.inboundSecurity,
+          inboundProtocol: sender.inboundProtocol
         }
       },
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     if (error instanceof ZodError) {
       return NextResponse.json(
         {

@@ -51,10 +51,32 @@ describe('SequenceEditor', () => {
       id: '11111111-2222-3333-4444-555555555555',
       name: 'Warm leads',
       status: 'active' as const,
+      launchAt: null,
+      launchedAt: '2025-10-15T09:55:00.000Z',
       senderId: senderSnapshot.id,
       sender: senderSnapshot,
       createdAt: '2025-10-15T10:00:00.000Z',
       updatedAt: '2025-10-15T10:00:00.000Z',
+      minGapMinutes: 10,
+        contactIds: [],
+        tracking: {
+          trackOpens: true,
+          trackClicks: true,
+          enableUnsubscribe: true
+        },
+        schedule: {
+          mode: 'immediate' as const,
+          sendTime: null,
+          sendWindowStart: null,
+          sendWindowEnd: null,
+          respectContactTimezone: true,
+          fallbackTimezone: null,
+          timezone: null,
+          sendDays: null,
+          sendWindows: null
+        },
+        stopCondition: 'on_reply' as const,
+        stopOnBounce: false,
       steps: [
         {
           id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -73,6 +95,7 @@ describe('SequenceEditor', () => {
       ...initialSequence,
       status: 'active' as const,
       updatedAt: '2025-10-15T11:00:00.000Z',
+      minGapMinutes: 12,
       steps: [
         {
           id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -166,6 +189,7 @@ describe('SequenceEditor', () => {
       id: initialSequence.id,
       name: 'Warm leads',
       senderId: senderSnapshot.id,
+      minGapMinutes: 10,
       steps: [
         {
           id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -190,10 +214,32 @@ describe('SequenceEditor', () => {
       id: sequenceId,
       name: 'Warm leads',
       status: 'active' as const,
+      launchAt: '2025-10-20T10:00:00.000Z',
+      launchedAt: null,
       senderId: senderSnapshot.id,
       sender: senderSnapshot,
       createdAt: '2025-10-15T10:00:00.000Z',
       updatedAt: '2025-10-15T10:00:00.000Z',
+      contactIds: [],
+      tracking: {
+        trackOpens: true,
+        trackClicks: false,
+        enableUnsubscribe: true
+      },
+      schedule: {
+        mode: 'fixed' as const,
+        sendTime: '09:00',
+        sendWindowStart: null,
+        sendWindowEnd: null,
+        respectContactTimezone: true,
+        fallbackTimezone: 'UTC',
+        timezone: null,
+        sendDays: null,
+        sendWindows: null
+      },
+      stopCondition: 'manual' as const,
+      stopOnBounce: false,
+      minGapMinutes: 6,
       steps: [
         {
           id: 'step-1',
@@ -222,10 +268,31 @@ describe('SequenceEditor', () => {
         id: sequenceId,
         name: 'Warm leads',
         status: 'active' as const,
+        launchAt: '2025-10-20T10:00:00.000Z',
+        launchedAt: null,
         senderId: senderSnapshot.id,
         sender: senderSnapshot,
         createdAt: '2025-10-15T10:00:00.000Z',
-        updatedAt: '2025-10-15T10:00:00.000Z'
+        updatedAt: '2025-10-15T10:00:00.000Z',
+        tracking: {
+          trackOpens: true,
+          trackClicks: true,
+          enableUnsubscribe: true
+        },
+        schedule: {
+          mode: 'immediate' as const,
+          sendTime: null,
+          sendWindowStart: null,
+          sendWindowEnd: null,
+          respectContactTimezone: true,
+          fallbackTimezone: null,
+          timezone: null,
+          sendDays: null,
+          sendWindows: null
+        },
+        stopCondition: 'on_reply' as const,
+        stopOnBounce: false,
+        minGapMinutes: 6
       },
       summary: {
         total: 1,
@@ -233,6 +300,8 @@ describe('SequenceEditor', () => {
         sent: 0,
         replied: 0,
         bounced: 0,
+        skipped: 0,
+        failed: 0,
         lastActivity: '2025-10-15T10:00:00.000Z'
       },
       contacts: [
@@ -281,10 +350,31 @@ describe('SequenceEditor', () => {
                 id: sequenceId,
                 name: 'Warm leads',
                 status: 'active' as const,
+                launchAt: '2025-10-20T10:00:00.000Z',
+                launchedAt: null,
                 senderId: senderSnapshot.id,
                 sender: senderSnapshot,
                 createdAt: '2025-10-15T10:00:00.000Z',
-                updatedAt: '2025-10-15T10:00:00.000Z'
+                updatedAt: '2025-10-15T10:00:00.000Z',
+                tracking: {
+                  trackOpens: true,
+                  trackClicks: true,
+                  enableUnsubscribe: true
+                },
+                schedule: {
+                  mode: 'immediate' as const,
+                  sendTime: null,
+                  sendWindowStart: null,
+                  sendWindowEnd: null,
+                  respectContactTimezone: true,
+                  fallbackTimezone: null,
+                  timezone: null,
+                  sendDays: null,
+                  sendWindows: null
+                },
+                stopCondition: 'on_reply' as const,
+                stopOnBounce: false,
+                minGapMinutes: 6
               },
               summary: {
                 total: 0,
@@ -292,6 +382,8 @@ describe('SequenceEditor', () => {
                 sent: 0,
                 replied: 0,
                 bounced: 0,
+                skipped: 0,
+                failed: 0,
                 lastActivity: null
               },
               contacts: []
@@ -306,7 +398,7 @@ describe('SequenceEditor', () => {
         });
       }
 
-      if (url.endsWith('/api/contacts')) {
+      if (url.includes('/api/contacts')) {
         return new Response(
           JSON.stringify({
             contacts: [
@@ -365,7 +457,11 @@ describe('SequenceEditor', () => {
       contactIds: [contact.id]
     });
 
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Contacts enrolled' })));
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.stringContaining('Contacts enrolled') })
+      )
+    );
 
     await waitFor(() => expect(screen.getByText('Alex Sender')).toBeTruthy());
     expect(screen.getByText('Northwind')).toBeTruthy();

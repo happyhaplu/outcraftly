@@ -21,6 +21,7 @@ type ContactRowProps = {
   onEdit: (contact: ContactListItem) => void;
   onEditTags: (contact: ContactListItem) => void;
   onDelete: (contact: ContactListItem) => void;
+  onViewDetails: (contact: ContactListItem) => void;
 };
 
 export function ContactRow({
@@ -29,7 +30,8 @@ export function ContactRow({
   onToggleSelect,
   onEdit,
   onEditTags,
-  onDelete
+  onDelete,
+  onViewDetails
 }: ContactRowProps) {
   return (
     <tr className="hover:bg-muted/30">
@@ -45,6 +47,7 @@ export function ContactRow({
           {contact.firstName} {contact.lastName}
         </div>
         <div>{contact.email}</div>
+        {contact.jobTitle ? <div className="text-xs text-muted-foreground">{contact.jobTitle}</div> : null}
       </td>
       <td className="px-4 py-3 text-sm text-muted-foreground align-top">{contact.company}</td>
       <td className="px-4 py-3 align-top">
@@ -75,6 +78,7 @@ export function ContactRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onSelect={() => onViewDetails(contact)}>View details</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onEdit(contact)}>Edit contact</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onEditTags(contact)}>Edit tags</DropdownMenuItem>
             <DropdownMenuItem

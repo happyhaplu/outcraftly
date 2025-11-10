@@ -1,14 +1,21 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const updateContactMock = vi.fn();
 
-vi.mock('@/lib/db/queries', () => ({
-  getUser: getUserMock,
-  getTeamForUser: getTeamForUserMock,
-  updateContact: updateContactMock
-}));
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
+
+vi.mock('@/lib/db/queries', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/queries')>('@/lib/db/queries');
+  return {
+    ...actual,
+    getActiveUser: getActiveUserMock,
+    getTeamForUser: getTeamForUserMock,
+    updateContact: updateContactMock
+  };
+});
 
 type PatchRoute = (request: Request) => Promise<Response>;
 
@@ -16,11 +23,12 @@ let PATCH: PatchRoute;
 
 beforeAll(async () => {
   ({ PATCH } = await import('@/app/api/contacts/update/route'));
+  ({ UnauthorizedError: UnauthorizedErrorRef, InactiveTrialError: InactiveTrialErrorRef } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getUserMock.mockResolvedValue({ id: 7 });
+  getActiveUserMock.mockResolvedValue({ id: 7 });
   getTeamForUserMock.mockResolvedValue({ id: 42 });
   updateContactMock.mockResolvedValue({
     id: '11111111-2222-3333-4444-555555555555',
@@ -98,7 +106,7 @@ describe('PATCH /api/contacts/update', () => {
   });
 
   it('rejects unauthenticated requests', async () => {
-    getUserMock.mockResolvedValueOnce(null);
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
 
     const request = new Request('http://localhost/api/contacts/update', {
       method: 'PATCH',
@@ -141,5 +149,21 @@ describe('PATCH /api/contacts/update', () => {
 
     const payload = await response.json();
     expect(payload.error).toBe('Invalid JSON payload');
+  });
+
+  it('rejects inactive trial accounts', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const request = new Request('http://localhost/api/contacts/update', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: '11111111-2222-3333-4444-555555555555',
+        company: 'Stone Inc.'
+      })
+    });
+
+    const response = await PATCH(request);
+    expect(response.status).toBe(403);
   });
 });

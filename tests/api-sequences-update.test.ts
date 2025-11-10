@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const getSenderForTeamMock = vi.fn();
 const updateSequenceMock = vi.fn();
@@ -8,20 +8,28 @@ const updateSequenceMock = vi.fn();
 type PatchRoute = (request: Request) => Promise<Response>;
 let PATCH: PatchRoute;
 
-vi.mock('@/lib/db/queries', () => ({
-  getUser: getUserMock,
-  getTeamForUser: getTeamForUserMock,
-  getSenderForTeam: getSenderForTeamMock,
-  updateSequence: updateSequenceMock
-}));
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
+
+vi.mock('@/lib/db/queries', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/queries')>('@/lib/db/queries');
+  return {
+    ...actual,
+    getActiveUser: getActiveUserMock,
+    getTeamForUser: getTeamForUserMock,
+    getSenderForTeam: getSenderForTeamMock,
+    updateSequence: updateSequenceMock
+  };
+});
 
 beforeAll(async () => {
   ({ PATCH } = await import('@/app/api/sequences/update/route'));
+  ({ UnauthorizedError: UnauthorizedErrorRef, InactiveTrialError: InactiveTrialErrorRef } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getUserMock.mockResolvedValue({ id: 7 });
+  getActiveUserMock.mockResolvedValue({ id: 7 });
   getTeamForUserMock.mockResolvedValue({ id: 42 });
   getSenderForTeamMock.mockResolvedValue({
     id: 9,
@@ -135,6 +143,52 @@ describe('PATCH /api/sequences/update', () => {
     });
   });
 
+  it('forwards contact selections to the update handler and returns them', async () => {
+    updateSequenceMock.mockResolvedValueOnce({
+      id: '11111111-2222-3333-4444-555555555555',
+      name: 'Warm leads',
+      status: 'draft',
+      senderId: 9,
+      sender: null,
+      createdAt: '2025-10-15T10:00:00.000Z',
+      updatedAt: '2025-10-15T11:00:00.000Z',
+      launchAt: null,
+      launchedAt: null,
+      minGapMinutes: null,
+      contactIds: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'],
+      steps: []
+    });
+
+    const request = new Request('http://localhost/api/sequences/update', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: '11111111-2222-3333-4444-555555555555',
+        name: 'Warm leads',
+        senderId: 9,
+        steps: [
+          {
+            order: 1,
+            subject: 'Intro',
+            body: 'Hello there',
+            delay: 0
+          }
+        ],
+        contacts: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']
+      })
+    });
+
+    const response = await PATCH(request);
+    expect(response.status).toBe(200);
+
+    expect(updateSequenceMock).toHaveBeenCalledWith(42, '11111111-2222-3333-4444-555555555555', expect.objectContaining({
+      contactIds: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']
+    }));
+
+    const payload = await response.json();
+    expect(payload.sequence.contactIds).toEqual(['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']);
+  });
+
   it('returns 404 when sequence is not found', async () => {
     updateSequenceMock.mockResolvedValueOnce(null);
 
@@ -172,7 +226,7 @@ describe('PATCH /api/sequences/update', () => {
   });
 
   it('rejects unauthenticated requests', async () => {
-    getUserMock.mockResolvedValueOnce(null);
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
 
     const request = new Request('http://localhost/api/sequences/update', {
       method: 'PATCH',
@@ -206,5 +260,18 @@ describe('PATCH /api/sequences/update', () => {
 
     const response = await PATCH(request);
     expect(response.status).toBe(400);
+  });
+
+  it('rejects inactive trial accounts', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const request = new Request('http://localhost/api/sequences/update', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', name: 'Test', steps: [] })
+    });
+
+    const response = await PATCH(request);
+    expect(response.status).toBe(403);
   });
 });

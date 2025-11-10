@@ -2,13 +2,20 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useSWRConfig } from 'swr';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import {
   senderFormSchema,
   type SenderFormValues
@@ -25,7 +32,8 @@ export function SenderForm() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    reset
+    reset,
+    control
   } = useForm<SenderFormValues>({
     resolver: zodResolver(senderFormSchema),
     defaultValues: {
@@ -33,8 +41,13 @@ export function SenderForm() {
       email: '',
       host: '',
       port: 587,
+      smtpSecurity: 'SSL/TLS',
       username: '',
-      password: ''
+      password: '',
+      inboundHost: '',
+      inboundPort: 993,
+      inboundSecurity: 'SSL/TLS',
+      inboundProtocol: 'IMAP'
     }
   });
 
@@ -43,12 +56,23 @@ export function SenderForm() {
     setServerSuccess(null);
 
     try {
+      const requestPayload: SenderFormValues = {
+        ...values,
+        inboundHost: values.inboundHost?.trim() ? values.inboundHost.trim() : undefined,
+        inboundPort:
+          typeof values.inboundPort === 'number' && Number.isFinite(values.inboundPort)
+            ? values.inboundPort
+            : undefined,
+        inboundSecurity: values.inboundSecurity ? values.inboundSecurity : undefined,
+        inboundProtocol: values.inboundProtocol ? values.inboundProtocol : undefined
+      };
+
       const response = await fetch('/api/senders/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(values)
+        body: JSON.stringify(requestPayload)
       });
 
       const payload = await response.json();
@@ -70,11 +94,16 @@ export function SenderForm() {
         email: '',
         host: '',
         port: 587,
+        smtpSecurity: 'SSL/TLS',
         username: '',
-        password: ''
+        password: '',
+        inboundHost: '',
+        inboundPort: 993,
+        inboundSecurity: 'SSL/TLS',
+        inboundProtocol: 'IMAP'
       });
 
-  void mutate('/api/senders/stats');
+      void mutate('/api/senders/stats');
 
       startTransition(() => {
         router.refresh();
@@ -149,6 +178,40 @@ export function SenderForm() {
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="smtpSecurity">SMTP Security</Label>
+        <Controller
+          name="smtpSecurity"
+          control={control}
+          render={({ field }) => (
+            <Select
+              value={field.value}
+              onValueChange={field.onChange}
+              disabled={field.disabled}
+            >
+              <SelectTrigger
+                id="smtpSecurity"
+                ref={field.ref}
+                onBlur={field.onBlur}
+                name={field.name}
+              >
+                <SelectValue placeholder="Select security mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SSL/TLS">SSL/TLS</SelectItem>
+                <SelectItem value="STARTTLS">STARTTLS</SelectItem>
+                <SelectItem value="None">None</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.smtpSecurity && (
+          <p className="text-xs font-medium text-destructive">
+            {errors.smtpSecurity.message}
+          </p>
+        )}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="username">Username</Label>
@@ -176,6 +239,109 @@ export function SenderForm() {
           {errors.password && (
             <p className="text-xs font-medium text-destructive">{errors.password.message}</p>
           )}
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-4">
+        <h3 className="font-semibold text-foreground">Inbound (IMAP/POP3)</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="inboundHost">Inbound Host</Label>
+            <Input
+              id="inboundHost"
+              placeholder="imap.mailprovider.com"
+              {...register('inboundHost')}
+              aria-invalid={errors.inboundHost ? 'true' : 'false'}
+            />
+            {errors.inboundHost && (
+              <p className="text-xs font-medium text-destructive">
+                {errors.inboundHost.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inboundPort">Inbound Port</Label>
+            <Input
+              id="inboundPort"
+              type="number"
+              inputMode="numeric"
+              placeholder="993"
+              {...register('inboundPort', { valueAsNumber: true })}
+              aria-invalid={errors.inboundPort ? 'true' : 'false'}
+            />
+            {errors.inboundPort && (
+              <p className="text-xs font-medium text-destructive">
+                {errors.inboundPort.message}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="inboundSecurity">Inbound Security</Label>
+            <Controller
+              name="inboundSecurity"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? undefined}
+                  onValueChange={field.onChange}
+                  disabled={field.disabled}
+                >
+                  <SelectTrigger
+                    id="inboundSecurity"
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                  >
+                    <SelectValue placeholder="Select security mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SSL/TLS">SSL/TLS</SelectItem>
+                    <SelectItem value="STARTTLS">STARTTLS</SelectItem>
+                    <SelectItem value="None">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.inboundSecurity && (
+              <p className="text-xs font-medium text-destructive">
+                {errors.inboundSecurity.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inboundProtocol">Inbound Protocol</Label>
+            <Controller
+              name="inboundProtocol"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? undefined}
+                  onValueChange={field.onChange}
+                  disabled={field.disabled}
+                >
+                  <SelectTrigger
+                    id="inboundProtocol"
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                  >
+                    <SelectValue placeholder="Select protocol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="IMAP">IMAP</SelectItem>
+                    <SelectItem value="POP3">POP3</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.inboundProtocol && (
+              <p className="text-xs font-medium text-destructive">
+                {errors.inboundProtocol.message}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

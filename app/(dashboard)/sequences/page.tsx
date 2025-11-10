@@ -2,9 +2,10 @@ import { Card, CardContent } from '@/components/ui/card';
 
 import { listSequencesForTeam, getTeamForUser } from '@/lib/db/queries';
 
-import { SequenceDashboard } from './SequenceDashboard';
-import { SequenceSummary } from './types';
-import { normaliseTimestamp } from './utils';
+import { mapSequenceSummary, type RawSequence } from '@/lib/sequences/utils';
+
+import { SequenceOverview } from './SequenceOverview';
+import type { SequenceSummary } from './types';
 
 export default async function SequencesPage() {
   const team = await getTeamForUser();
@@ -33,23 +34,9 @@ export default async function SequencesPage() {
   }
 
   const sequences = await listSequencesForTeam(team.id);
-  const summaries: SequenceSummary[] = sequences.map((sequence) => ({
-    id: sequence.id,
-    name: sequence.name,
-    status: sequence.status,
-    createdAt: normaliseTimestamp(sequence.createdAt),
-    updatedAt: normaliseTimestamp(sequence.updatedAt),
-    senderId: sequence.senderId ?? null,
-    sender: sequence.sender && sequence.sender.id
-      ? {
-          id: sequence.sender.id,
-          name: sequence.sender.name,
-          email: sequence.sender.email,
-          status: sequence.sender.status
-        }
-      : null,
-    stepCount: Number(sequence.stepCount ?? 0)
-  }));
+  const summaries: SequenceSummary[] = sequences
+    .map((sequence) => mapSequenceSummary(sequence as RawSequence))
+    .filter((sequence) => !sequence.deletedAt);
 
   return (
     <section className="space-y-8">
@@ -60,8 +47,7 @@ export default async function SequencesPage() {
           Create multi-step cadences, tune delays, and personalise every touchpoint before you hit launch.
         </p>
       </header>
-
-      <SequenceDashboard initialSequences={summaries} />
+      <SequenceOverview initialSequences={summaries} />
     </section>
   );
 }

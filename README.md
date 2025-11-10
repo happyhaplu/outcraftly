@@ -85,6 +85,24 @@ Set the `SEQUENCE_WORKER_SECRET` environment variable to a strong random string.
 
 The endpoint returns a JSON payload with the worker metrics so you can monitor executions from your scheduler.
 
+### Trial expiry automation
+
+- Run the trial clean-up manually with `pnpm trial:expire`. The script deactivates every account whose trial window lapsed and logs the affected user emails.
+- Schedule the command in your hosting provider (e.g. Vercel Cron, GitHub Actions, or a traditional cron job) to execute once per day so newly expired trials are blocked automatically.
+- Set the `BASE_URL` and database environment variables in the scheduled job so the script can connect to Postgres. The command exits cleanly after closing the pooled connection.
+
+### Sequence lifecycle statuses
+
+- Newly created sequences now start in a **Draft** state. Launch them via the dashboard when you are ready to begin sending.
+- Draft sequences cannot accept enrollments until they are launched (the UI will prompt you to resume/launch first).
+- Apply the migrations `lib/db/migrations/0019_add_sequence_draft_status.sql` and `lib/db/migrations/0020_add_sequence_launch_at.sql` after pulling these changes. If you are using Drizzle Kit, run:
+
+```bash
+pnpm db:migrate
+```
+
+If you manage migrations manually, execute the SQL file against your database before deploying.
+
 ## Testing Payments
 
 To test Stripe payments, use the following test card details:

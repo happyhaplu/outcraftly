@@ -1,0 +1,2 @@
+-- Placeholder migration referenced in the Drizzle _journal.
+-- Schema changes were applied manually in prior environment.

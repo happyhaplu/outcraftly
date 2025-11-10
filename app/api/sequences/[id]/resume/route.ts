@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server';
 
-import { getTeamForUser, getUser, setSequenceLifecycleStatus } from '@/lib/db/queries';
+import {
+  getTeamForUser,
+  getActiveUser,
+  setSequenceLifecycleStatus,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
+} from '@/lib/db/queries';
 import { sequenceIdSchema } from '@/lib/validation/sequence';
 
 export const runtime = 'nodejs';
 
-type RouteContext = {
-  params?: Promise<{ id?: string }> | { id?: string };
-};
-
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(_request: Request, context: any) {
   const rawParams = (await context?.params) ?? {};
   const params = rawParams as { id?: string };
 
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -51,6 +51,14 @@ export async function POST(_request: Request, context: RouteContext) {
       }
     });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     console.error('Failed to resume sequence', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

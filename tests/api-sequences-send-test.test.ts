@@ -1,8 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const getSequenceStepForTeamMock = vi.fn();
+const assertCanSendEmailsMock = vi.fn();
+const trackEmailsSentMock = vi.fn();
 
 const renderSequenceContentMock = vi.fn();
 const dispatchSequenceEmailMock = vi.fn();
@@ -13,13 +15,19 @@ type QueriesModule = typeof import('@/lib/db/queries');
 
 type MailerModule = typeof import('@/lib/mail/sequence-mailer');
 
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
+let PlanLimitExceededErrorRef: typeof import('@/lib/db/queries').PlanLimitExceededError;
+
 vi.mock('@/lib/db/queries', async () => {
   const actual = (await vi.importActual<QueriesModule>('@/lib/db/queries')) as QueriesModule;
   return {
     ...actual,
-    getUser: getUserMock,
+    getActiveUser: getActiveUserMock,
     getTeamForUser: getTeamForUserMock,
-    getSequenceStepForTeam: getSequenceStepForTeamMock
+    getSequenceStepForTeam: getSequenceStepForTeamMock,
+    assertCanSendEmails: assertCanSendEmailsMock,
+    trackEmailsSent: trackEmailsSentMock
   } satisfies QueriesModule;
 });
 
@@ -30,12 +38,17 @@ vi.mock('@/lib/mail/sequence-mailer', (): MailerModule => ({
 
 beforeAll(async () => {
   ({ POST } = await import('@/app/api/sequences/[id]/steps/[stepId]/send-test/route'));
+  ({
+    UnauthorizedError: UnauthorizedErrorRef,
+    InactiveTrialError: InactiveTrialErrorRef,
+    PlanLimitExceededError: PlanLimitExceededErrorRef
+  } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
 
-  getUserMock.mockResolvedValue({ id: 99, email: 'owner@example.com', name: 'Owner Example' });
+  getActiveUserMock.mockResolvedValue({ id: 99, email: 'owner@example.com', name: 'Owner Example' });
   getTeamForUserMock.mockResolvedValue({ id: 77, name: 'Example Corp' });
   getSequenceStepForTeamMock.mockResolvedValue({
     id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -64,6 +77,8 @@ beforeEach(() => {
     rejected: [],
     response: '250 2.0.0 OK'
   });
+  assertCanSendEmailsMock.mockResolvedValue(undefined);
+  trackEmailsSentMock.mockResolvedValue(undefined);
 });
 
 describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
@@ -83,6 +98,7 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(200);
+  expect(assertCanSendEmailsMock).toHaveBeenCalledWith(77, 1);
     expect(renderSequenceContentMock).toHaveBeenCalledWith(
       'Hello {{firstName}}',
       'Body for {{company}}',
@@ -96,6 +112,7 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
         subject: 'Rendered subject'
       })
     );
+  expect(trackEmailsSentMock).toHaveBeenCalledWith(77, 1);
   });
 
   it('defaults to the user email when recipient is omitted', async () => {
@@ -107,9 +124,11 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(assertCanSendEmailsMock).toHaveBeenCalledTimes(1);
     expect(dispatchSequenceEmailMock).toHaveBeenCalledWith(
       expect.objectContaining({ recipient: 'owner@example.com', shouldVerify: true })
     );
+    expect(trackEmailsSentMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns 404 when the step is not found', async () => {
@@ -123,7 +142,9 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(404);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
     expect(dispatchSequenceEmailMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 when no sender is configured', async () => {
@@ -152,7 +173,9 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(409);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
     expect(dispatchSequenceEmailMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 when sender is inactive', async () => {
@@ -181,7 +204,9 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(409);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
     expect(dispatchSequenceEmailMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 for invalid recipient email', async () => {
@@ -193,6 +218,57 @@ describe('POST /api/sequences/[id]/steps/[stepId]/send-test', () => {
     });
 
     expect(response.status).toBe(400);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
+    expect(dispatchSequenceEmailMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated requests', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
+
+    const response = await POST(buildRequest({ recipientEmail: 'test@example.com' }), {
+      params: {
+        id: '11111111-2222-3333-4444-555555555555',
+        stepId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      }
+    });
+
+    expect(response.status).toBe(401);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects inactive trial accounts', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const response = await POST(buildRequest({ recipientEmail: 'test@example.com' }), {
+      params: {
+        id: '11111111-2222-3333-4444-555555555555',
+        stepId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      }
+    });
+
+    expect(response.status).toBe(403);
+    expect(assertCanSendEmailsMock).not.toHaveBeenCalled();
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the monthly email limit would be exceeded', async () => {
+    assertCanSendEmailsMock.mockRejectedValueOnce(new PlanLimitExceededErrorRef('emails', 2000, 0));
+
+    const response = await POST(buildRequest({ recipientEmail: 'test@example.com' }), {
+      params: {
+        id: '11111111-2222-3333-4444-555555555555',
+        stepId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      }
+    });
+
+    expect(response.status).toBe(403);
+    const payload = await response.json();
+    expect(payload.resource).toBe('emails');
+    expect(payload.limit).toBe(2000);
+    expect(payload.remaining).toBe(0);
+    expect(trackEmailsSentMock).not.toHaveBeenCalled();
     expect(dispatchSequenceEmailMock).not.toHaveBeenCalled();
   });
 });

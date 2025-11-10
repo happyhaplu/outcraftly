@@ -18,6 +18,13 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { getTeamForUser, getTeamUsageSummary, getUser } from "@/lib/db/queries";
+import {
+  DEFAULT_PLAN_USAGE_LIMITS,
+  DEFAULT_USER_PLAN,
+  type UserPlan
+} from "@/lib/config/plans";
 
 const stats = [
   {
@@ -98,7 +105,48 @@ const quickActions = [
   }
 ];
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [user, team] = await Promise.all([getUser(), getTeamForUser()]);
+  const usageSummary = team ? await getTeamUsageSummary(team.id) : null;
+
+  const rawPlan = usageSummary?.plan ?? user?.plan ?? DEFAULT_USER_PLAN;
+  const planNames = Object.keys(DEFAULT_PLAN_USAGE_LIMITS) as UserPlan[];
+  const currentPlan: UserPlan = planNames.includes(rawPlan as UserPlan)
+    ? (rawPlan as UserPlan)
+    : DEFAULT_USER_PLAN;
+  const planLimits = usageSummary?.limits ??
+    DEFAULT_PLAN_USAGE_LIMITS[currentPlan] ??
+    DEFAULT_PLAN_USAGE_LIMITS[DEFAULT_USER_PLAN];
+
+  const planSummary = [
+    { label: "Prospects", value: planLimits.prospects.toLocaleString() },
+    { label: "Emails / month", value: planLimits.emailsPerMonth.toLocaleString() },
+    { label: "AI credits", value: planLimits.credits.toLocaleString() }
+  ];
+
+  const usageMetrics = usageSummary
+    ? [
+        {
+          label: "Prospects",
+          used: usageSummary.prospects.used,
+          limit: usageSummary.prospects.limit,
+          helper: "Total contacts across your workspace."
+        },
+        {
+          label: "Emails (this month)",
+          used: usageSummary.emails.used,
+          limit: usageSummary.emails.limit,
+          helper: "Resets monthly based on your billing cycle."
+        },
+        {
+          label: "AI credits",
+          used: usageSummary.credits.used,
+          limit: usageSummary.credits.limit,
+          helper: "Includes all AI-assisted features."
+        }
+      ]
+    : null;
+
   return (
     <div className="space-y-8 animate-fade-in">
       <header className="space-y-1">
@@ -110,6 +158,67 @@ export default function DashboardPage() {
           Monitor campaign performance and take action in one place.
         </p>
       </header>
+
+      <Card className="border-primary/40 bg-primary/5">
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-lg font-semibold text-foreground">
+              Current plan: {usageSummary?.plan ?? currentPlan}
+            </CardTitle>
+            <CardDescription className="flex items-center gap-2">
+              Workspace limits for your subscription tier.
+              {usageSummary?.planIsTrial ? (
+                <Badge variant="secondary">Trial</Badge>
+              ) : null}
+              {usageSummary && !usageSummary.planIsActive ? (
+                <Badge variant="outline">Inactive</Badge>
+              ) : null}
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/pricing">Compare plans</Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6 text-sm">
+          <div className="flex flex-wrap gap-6">
+            {planSummary.map((item) => (
+              <div key={item.label} className="min-w-[120px]">
+                <p className="text-xs uppercase text-muted-foreground">{item.label}</p>
+                <p className="text-base font-semibold text-foreground">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {usageMetrics && (
+            <div className="space-y-4">
+              {usageMetrics.map((metric) => {
+                const ratio = metric.limit === 0 ? 0 : metric.used / metric.limit;
+                const percent = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+                const usageClass = ratio >= 1 ? 'text-destructive' : ratio >= 0.9 ? 'text-amber-500' : 'text-foreground';
+                const statusMessage = ratio >= 1 ? 'Limit reached' : ratio >= 0.9 ? 'Approaching your plan limit' : null;
+
+                return (
+                  <div key={metric.label} className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                      <span className="uppercase tracking-wide">{metric.label}</span>
+                      <span className={usageClass}>
+                        {metric.used.toLocaleString()} / {metric.limit.toLocaleString()}
+                      </span>
+                    </div>
+                    <Progress value={percent} className="h-2" />
+                    {statusMessage && (
+                      <p className={`text-xs font-semibold ${usageClass}`}>
+                        {statusMessage}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground/80">{metric.helper}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {

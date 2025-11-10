@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 
 import {
   getTeamForUser,
-  getUser,
+  getActiveUser,
   listSequenceBouncesForTeam,
-  listSequenceRepliesForTeam
+  listSequenceRepliesForTeam,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
 import { sequenceIdSchema } from '@/lib/validation/sequence';
 
@@ -14,10 +17,7 @@ export async function GET(_request: Request, context: any) {
   const params = ((await context?.params) ?? {}) as { id?: string };
 
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -69,6 +69,14 @@ export async function GET(_request: Request, context: any) {
       }))
     });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     console.error('Failed to load sequence engagement', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

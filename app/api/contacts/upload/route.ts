@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getContactsForTeam, getTeamForUser, getUser, insertContacts } from '@/lib/db/queries';
+import {
+  getContactsForTeam,
+  getTeamForUser,
+  getActiveUser,
+  insertContacts,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE,
+  PlanLimitExceededError
+} from '@/lib/db/queries';
 import { normalizeRecord, parseCsv, REQUIRED_FIELDS } from '@/lib/contacts/csv';
 import type { ParsedCsvContact } from '@/lib/contacts/csv';
 
@@ -9,10 +18,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -60,11 +66,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The CSV file does not contain any rows.' }, { status: 400 });
     }
 
-  const existingContacts = await getContactsForTeam(team.id);
-  const existingEmails = new Set(existingContacts.map((contact) => contact.email.toLowerCase()));
+    const existingContacts = await getContactsForTeam(team.id);
+    const existingEmails = new Set(existingContacts.map((contact) => contact.email.toLowerCase()));
 
     const seenEmails = new Set<string>();
-  const rows: ParsedCsvContact[] = [];
+    const rows: ParsedCsvContact[] = [];
     let duplicateCount = 0;
 
     for (const record of records) {
@@ -79,7 +85,7 @@ export async function POST(request: Request) {
         }
       }
 
-    const email = normalized.email.toLowerCase();
+      const email = normalized.email.toLowerCase();
       if (existingEmails.has(email) || seenEmails.has(email)) {
         duplicateCount += 1;
         continue;
@@ -95,15 +101,15 @@ export async function POST(request: Request) {
       });
     }
 
-    const inserted = await insertContacts(team.id, rows);
-    duplicateCount += rows.length - inserted;
+    const insertSummary = await insertContacts(team.id, rows);
+    duplicateCount += insertSummary.skipped;
 
     return NextResponse.json(
       {
         message: 'Contacts uploaded successfully',
         summary: {
           total: records.length,
-          inserted,
+          inserted: insertSummary.inserted,
           skipped: duplicateCount,
           duplicates: duplicateCount
         }
@@ -111,6 +117,26 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
+    if (error instanceof PlanLimitExceededError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          resource: error.resource,
+          limit: error.limit,
+          remaining: error.remaining
+        },
+        { status: 403 }
+      );
+    }
+
     console.error('Failed to upload contacts', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

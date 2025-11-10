@@ -1,12 +1,38 @@
 import { Card, CardContent } from '@/components/ui/card';
 
 import { ContactList } from './contact-list';
-import { getContactsForTeam, getTeamForUser } from '@/lib/db/queries';
+import { getPaginatedContactsForTeam, getTeamForUser } from '@/lib/db/queries';
 import { ContactActions } from './contact-actions';
 
 export default async function ContactsPage() {
   const team = await getTeamForUser();
-  const contacts = team ? await getContactsForTeam(team.id) : [];
+  const paginatedContacts = team
+    ? await getPaginatedContactsForTeam(team.id, {
+        page: 1,
+        limit: 20
+      })
+    : null;
+
+  const initialPage = paginatedContacts
+    ? {
+        data: paginatedContacts.data.map((contact) => ({
+          id: contact.id,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          company: contact.company,
+          jobTitle: contact.jobTitle ?? null,
+          tags: Array.isArray(contact.tags) ? contact.tags : [],
+          createdAt:
+            contact.createdAt instanceof Date
+              ? contact.createdAt.toISOString()
+              : new Date(contact.createdAt).toISOString()
+        })),
+        total: paginatedContacts.total,
+        page: paginatedContacts.page,
+        totalPages: paginatedContacts.totalPages
+      }
+    : null;
 
   return (
     <section className="space-y-8">
@@ -18,23 +44,10 @@ export default async function ContactsPage() {
         </p>
       </header>
 
-      {team ? (
+      {team && initialPage ? (
         <div className="space-y-8">
           <ContactActions />
-          <ContactList
-            initialContacts={contacts.map((contact) => ({
-              id: contact.id,
-              firstName: contact.firstName,
-              lastName: contact.lastName,
-              email: contact.email,
-              company: contact.company,
-              tags: contact.tags ?? [],
-              createdAt:
-                contact.createdAt instanceof Date
-                  ? contact.createdAt.toISOString()
-                  : new Date(contact.createdAt).toISOString()
-            }))}
-          />
+          <ContactList initialPage={initialPage} />
         </div>
       ) : (
         <Card className="border-dashed border-primary/40 bg-primary/5 text-center">

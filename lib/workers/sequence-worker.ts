@@ -1,20 +1,33 @@
-import { and, desc, eq, gt, inArray, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lte, sql, type SQL } from 'drizzle-orm';
 
 import { db } from '@/lib/db/drizzle';
 import {
+  activateScheduledSequences,
+  assertCanSendEmails,
+  trackEmailsSent,
+  PlanLimitExceededError,
+  syncAllSequenceRepliesForTeam,
+  syncSequenceRepliesFromLogs
+} from '@/lib/db/queries';
+import {
   contacts,
+  contactCustomFieldDefinitions,
+  contactCustomFieldValues,
   contactSequenceStatus,
   deliveryLogs,
   sequences,
   sequenceSteps,
   senders
 } from '@/lib/db/schema';
+import { getMinSendIntervalMinutes } from '@/lib/config/pacing';
 import { computeScheduledUtc, type SequenceScheduleOptions } from '@/lib/timezone';
 import { dispatchSequenceEmail, renderSequenceContent } from '@/lib/mail/sequence-mailer';
-import { decryptSecret } from '@/lib/security/encryption';
+import { decryptSecret, isProbablyEncryptedSecret } from '@/lib/security/encryption';
+import { ingestFallbackReplies } from '@/lib/replies/fallback-ingestion';
 
 const MAX_SEND_ATTEMPTS = 3;
 const RETRY_DELAY_MINUTES = 15;
+const DELIVERY_SCHEMA_CHECK_CACHE = new WeakSet<DatabaseClient>();
 
 type DatabaseClient = typeof db;
 
@@ -22,6 +35,8 @@ export type SequenceWorkerOptions = {
   teamId?: number;
   limit?: number;
   now?: Date;
+  minSendIntervalMinutes?: number;
+  sleep?: (ms: number) => Promise<void>;
 };
 
 export type SequenceWorkerResult = {
@@ -30,6 +45,9 @@ export type SequenceWorkerResult = {
   failed: number;
   retried: number;
   skipped: number;
+  durationMs: number;
+  details: SequenceWorkerTaskAudit[];
+  diagnostics: SequenceWorkerDiagnostics | null;
 };
 
 type PendingDelivery = {
@@ -38,6 +56,7 @@ type PendingDelivery = {
   sequenceId: string;
   stepId: string;
   sequenceStatus: 'active' | 'paused';
+  sequenceMinGapMinutes: number | null;
   attempts: number;
   scheduledAt: Date;
   teamId: number;
@@ -49,6 +68,7 @@ type PendingDelivery = {
   contactLastName: string;
   contactEmail: string;
   contactCompany: string;
+  contactTags: string[] | null;
   skipIfReplied: boolean;
   skipIfBounced: boolean;
   delayIfReplied: number | null;
@@ -59,6 +79,14 @@ type PendingDelivery = {
   scheduleWindowEnd: string | null;
   scheduleRespectTimezone: boolean;
   scheduleFallbackTimezone: string | null;
+  scheduleTimezone: string | null;
+  scheduleSendDays: string[] | null;
+  scheduleSendWindows: Array<{ start: string; end: string }> | null;
+  manualTriggeredAt: Date | null;
+  manualSentAt: Date | null;
+  contactCustomFieldsById?: Record<string, string>;
+  contactCustomFieldsByKey?: Record<string, string>;
+  contactCustomFieldsByName?: Record<string, string>;
   sender: {
     id: number;
     name: string;
@@ -72,6 +100,164 @@ type PendingDelivery = {
 };
 
 const DEFAULT_FALLBACK_TIMEZONE = 'UTC';
+const MAX_AUDIT_ENTRIES = 100;
+const DEFAULT_STEP_GAP_MINUTES = 2;
+const MINUTE_MS = 60 * 1000;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * 60;
+const FLOAT_EPSILON = 1e-6;
+
+export type StepDelayUnit = 'minutes' | 'hours' | 'days';
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isApproximatelyInteger(value: number): boolean {
+  return Math.abs(value - Math.round(value)) <= FLOAT_EPSILON;
+}
+
+function normaliseDelayMinutes(
+  value: number | null | undefined,
+  unit: StepDelayUnit | null | undefined,
+  defaultGapMinutes: number
+): { minutes: number; usedDefault: boolean } {
+  if (!isFiniteNumber(value) || value <= 0) {
+    return { minutes: defaultGapMinutes, usedDefault: true };
+  }
+
+  const safeUnit = unit ?? 'minutes';
+
+  if (safeUnit === 'minutes') {
+    return { minutes: value, usedDefault: false };
+  }
+
+  if (safeUnit === 'hours') {
+    return { minutes: value * MINUTES_PER_HOUR, usedDefault: false };
+  }
+
+  if (safeUnit === 'days') {
+    return { minutes: value * MINUTES_PER_DAY, usedDefault: false };
+  }
+
+  return { minutes: defaultGapMinutes, usedDefault: true };
+}
+
+export function computeNextSendAt(
+  lastSentAt: Date,
+  delayValue: number | null | undefined,
+  delayUnit: StepDelayUnit | null | undefined,
+  globalMinIntervalMinutes: number,
+  defaultGapMinutes = DEFAULT_STEP_GAP_MINUTES
+): {
+  desiredAt: Date;
+  stepDelayMinutes: number;
+  effectiveMinGapMinutes: number;
+  usedDefaultGap: boolean;
+  delayedByMs: number;
+} {
+  const globalMin = Number.isFinite(globalMinIntervalMinutes) && globalMinIntervalMinutes > 0
+    ? globalMinIntervalMinutes
+    : 0;
+
+  const { minutes: rawStepDelayMinutes, usedDefault } = normaliseDelayMinutes(delayValue, delayUnit, defaultGapMinutes);
+  const stepDelayMinutes = Math.max(rawStepDelayMinutes, 0);
+  const desiredAt = new Date(lastSentAt.getTime() + stepDelayMinutes * MINUTE_MS);
+  const effectiveMinGapMinutes = Math.max(stepDelayMinutes, globalMin);
+  const delayedByMs = Math.max(0, desiredAt.getTime() - lastSentAt.getTime());
+
+  return {
+    desiredAt,
+    stepDelayMinutes,
+    effectiveMinGapMinutes,
+    usedDefaultGap: usedDefault,
+    delayedByMs
+  };
+}
+
+function resolveDelayFromHours(
+  delayHours: number | null | undefined
+): { value: number | null; unit: StepDelayUnit | null } {
+  if (!isFiniteNumber(delayHours) || delayHours <= 0) {
+    return { value: 0, unit: null };
+  }
+
+  const minutes = delayHours * MINUTES_PER_HOUR;
+  const roundedMinutes = Math.round(minutes * 1000) / 1000;
+
+  const days = roundedMinutes / MINUTES_PER_DAY;
+  if (isApproximatelyInteger(days) && days >= 1) {
+    return { value: Math.round(days), unit: 'days' };
+  }
+
+  const hours = roundedMinutes / MINUTES_PER_HOUR;
+  if (isApproximatelyInteger(hours) && hours >= 1) {
+    return { value: Math.round(hours), unit: 'hours' };
+  }
+
+  return { value: roundedMinutes, unit: 'minutes' };
+}
+
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+export type SequenceWorkerTaskOutcome = 'sent' | 'skipped' | 'failed' | 'retry' | 'delayed';
+
+export type SequenceWorkerTaskAudit = {
+  statusId: string;
+  sequenceId: string;
+  contactId: string;
+  stepId: string | null;
+  scheduledAt: string;
+  attempts: number;
+  outcome: SequenceWorkerTaskOutcome;
+  reason?: string;
+  error?: string;
+  messageId?: string | null;
+  rescheduledFor?: string | null;
+};
+
+export type SequenceWorkerDiagnostics = {
+  pendingSequences: Array<{
+    sequenceId: string;
+    status: 'draft' | 'active' | 'paused';
+    pending: number;
+    nextScheduledAt: string | null;
+  }>;
+};
+
+type SequenceSkipReason =
+  | 'draft'
+  | 'paused'
+  | 'deleted'
+  | 'status_changed'
+  | 'reply_stop'
+  | 'reply_delay'
+  | 'bounce_policy'
+  | 'outside_window'
+  | 'plan_limit';
+
+function logWorkerEvent(level: 'info' | 'warn' | 'error', message: string, context?: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') {
+    return;
+  }
+
+  const payload = { tag: '[SequenceWorker]', level, message, ...(context ?? {}) };
+
+  if (level === 'warn') {
+    console.warn(payload);
+    return;
+  }
+
+  if (level === 'error') {
+    console.error(payload);
+    return;
+  }
+
+  console.info(payload);
+}
 
 function resolveSenderPassword(raw: string | null | undefined): string | null {
   if (!raw) {
@@ -84,6 +270,10 @@ function resolveSenderPassword(raw: string | null | undefined): string | null {
   }
 
   try {
+    if (!isProbablyEncryptedSecret(raw)) {
+      return raw;
+    }
+
     return decryptSecret(raw);
   } catch (error) {
     console.warn('Failed to decrypt sender password, falling back to stored value', error instanceof Error ? error.message : error);
@@ -92,11 +282,27 @@ function resolveSenderPassword(raw: string | null | undefined): string | null {
 }
 
 function buildScheduleOptions(task: PendingDelivery): SequenceScheduleOptions | null {
+  const sendDays = Array.isArray(task.scheduleSendDays) && task.scheduleSendDays.length > 0
+    ? task.scheduleSendDays.filter((day): day is string => typeof day === 'string' && day.trim().length > 0)
+    : null;
+
+  const sendWindows = Array.isArray(task.scheduleSendWindows) && task.scheduleSendWindows.length > 0
+    ? task.scheduleSendWindows
+        .map((window) => ({
+          start: typeof window?.start === 'string' ? window.start.trim() : '',
+          end: typeof window?.end === 'string' ? window.end.trim() : ''
+        }))
+        .filter((window) => window.start.length > 0 && window.end.length > 0)
+    : null;
+
   if (task.scheduleMode === 'fixed' && task.scheduleSendTime) {
     return {
       mode: 'fixed',
       sendTime: task.scheduleSendTime,
-      respectContactTimezone: task.scheduleRespectTimezone !== false
+      respectContactTimezone: task.scheduleRespectTimezone !== false,
+      timezone: task.scheduleTimezone ?? null,
+      sendDays,
+      sendWindows
     };
   }
 
@@ -105,24 +311,238 @@ function buildScheduleOptions(task: PendingDelivery): SequenceScheduleOptions | 
       mode: 'window',
       sendWindowStart: task.scheduleWindowStart,
       sendWindowEnd: task.scheduleWindowEnd,
-      respectContactTimezone: task.scheduleRespectTimezone !== false
+      respectContactTimezone: task.scheduleRespectTimezone !== false,
+      timezone: task.scheduleTimezone ?? null,
+      sendDays,
+      sendWindows: sendWindows && sendWindows.length > 0 ? sendWindows : null
+    };
+  }
+
+  if (sendDays || (sendWindows && sendWindows.length > 0) || (task.scheduleTimezone && task.scheduleTimezone.length > 0)) {
+    return {
+      mode: 'immediate',
+      respectContactTimezone: task.scheduleRespectTimezone !== false,
+      timezone: task.scheduleTimezone ?? null,
+      sendDays,
+      sendWindows
     };
   }
 
   return null;
 }
 
+async function ensureDeliveryLogSchema(client: DatabaseClient) {
+  if (DELIVERY_SCHEMA_CHECK_CACHE.has(client)) {
+    return;
+  }
+
+  if (typeof (client as any).execute !== 'function') {
+    DELIVERY_SCHEMA_CHECK_CACHE.add(client);
+    return;
+  }
+
+  try {
+    await (client as any).execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'delivery_status'
+            AND e.enumlabel = 'skipped'
+        ) THEN
+          ALTER TYPE delivery_status ADD VALUE 'skipped';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'delivery_status'
+            AND e.enumlabel = 'delayed'
+        ) THEN
+          ALTER TYPE delivery_status ADD VALUE 'delayed';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'delivery_status'
+            AND e.enumlabel = 'replied'
+        ) THEN
+          ALTER TYPE delivery_status ADD VALUE 'replied';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_enum e
+          JOIN pg_type t ON t.oid = e.enumtypid
+          WHERE t.typname = 'delivery_status'
+            AND e.enumlabel = 'manual_send'
+        ) THEN
+          ALTER TYPE delivery_status ADD VALUE 'manual_send';
+        END IF;
+      END $$;
+    `);
+
+    await (client as any).execute(sql`ALTER TABLE delivery_logs ADD COLUMN IF NOT EXISTS status_id uuid`);
+    await (client as any).execute(sql`ALTER TABLE delivery_logs ADD COLUMN IF NOT EXISTS skip_reason text`);
+  } catch (error) {
+    console.warn('Failed to ensure delivery log schema', error instanceof Error ? error.message : error);
+  } finally {
+    DELIVERY_SCHEMA_CHECK_CACHE.add(client);
+  }
+}
+
+async function diagnosePendingDeliveries(
+  client: DatabaseClient,
+  teamId?: number
+): Promise<SequenceWorkerDiagnostics | null> {
+  // Surface why the worker saw no ready tasks by grouping pending contacts per sequence status.
+  const conditions = [eq(contactSequenceStatus.status, 'pending')];
+
+  conditions.push(isNull(sequences.deletedAt));
+
+  if (typeof teamId === 'number') {
+    conditions.push(eq(sequences.teamId, teamId));
+  }
+
+  const whereClause = conditions.length === 1 ? conditions[0]! : and(...conditions);
+
+  const rows = await client
+    .select({
+      sequenceId: contactSequenceStatus.sequenceId,
+      status: sequences.status,
+      pending: sql<number>`count(*)`,
+      nextScheduledAt: sql<Date | null>`min(${contactSequenceStatus.scheduledAt})`
+    })
+    .from(contactSequenceStatus)
+    .innerJoin(sequences, eq(contactSequenceStatus.sequenceId, sequences.id))
+    .where(whereClause)
+    .groupBy(contactSequenceStatus.sequenceId, sequences.status)
+    .orderBy(desc(sql`count(*)`))
+    .limit(25);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return {
+    pendingSequences: rows.map((row) => ({
+      sequenceId: row.sequenceId,
+      status: (row.status as 'draft' | 'active' | 'paused') ?? 'draft',
+      pending: row.pending ?? 0,
+      nextScheduledAt: row.nextScheduledAt ? row.nextScheduledAt.toISOString() : null
+    }))
+  };
+}
+
 export async function runSequenceWorker(
   options: SequenceWorkerOptions = {},
   client: DatabaseClient = db
 ): Promise<SequenceWorkerResult> {
-  const now = options.now ?? new Date();
+  let now = options.now ?? new Date();
+  let nowMs = now.getTime();
   const limit = Math.max(1, options.limit ?? 25);
+  const startedAt = Date.now();
+  const audits: SequenceWorkerTaskAudit[] = [];
+  let auditOverflow = false;
+  const pushAudit = (audit: SequenceWorkerTaskAudit) => {
+    if (audits.length >= MAX_AUDIT_ENTRIES) {
+      auditOverflow = true;
+      return;
+    }
+    audits.push(audit);
+  };
+  let diagnostics: SequenceWorkerDiagnostics | null = null;
 
-  const tasks = await fetchPendingDeliveries(client, now, limit, options.teamId);
+  const globalMinSendIntervalMinutes =
+    typeof options.minSendIntervalMinutes === 'number' && Number.isFinite(options.minSendIntervalMinutes) &&
+    options.minSendIntervalMinutes >= 0
+      ? options.minSendIntervalMinutes
+      : getMinSendIntervalMinutes();
+  const sleep = options.sleep ?? defaultSleep;
+  let lastSentAtMs: number | null = null;
+
+  const syncWithSystemClock = () => {
+    if (!options.now) {
+      const systemNow = Date.now();
+      if (systemNow > nowMs) {
+        nowMs = systemNow;
+        now = new Date(nowMs);
+      }
+    }
+  };
+
+  await ensureDeliveryLogSchema(client);
+
+  try {
+    const fallbackResult = await ingestFallbackReplies({ logger: logWorkerEvent });
+    if (fallbackResult.processed > 0) {
+      logWorkerEvent('info', 'Fallback reply ingestion processed events', {
+        processed: fallbackResult.processed,
+        filesProcessed: fallbackResult.filesProcessed
+      });
+    }
+  } catch (error) {
+    logWorkerEvent('warn', 'Fallback reply ingestion failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  // Activate any scheduled sequences before fetching pending deliveries
+  try {
+    await activateScheduledSequences(options.teamId, client);
+  } catch (err) {
+    console.warn('Failed to activate scheduled sequences', err instanceof Error ? err.message : err);
+  }
+
+  let tasks = await fetchPendingDeliveries(client, now, limit, options.teamId);
+  tasks = await hydratePendingDeliveryPersonalisation(client, tasks);
+  logWorkerEvent('info', 'Fetched pending deliveries', {
+    count: tasks.length,
+    limit,
+    teamId: options.teamId ?? null
+  });
+
+  if (tasks.length > 0) {
+    try {
+      if (typeof options.teamId === 'number' && Number.isFinite(options.teamId)) {
+        await syncAllSequenceRepliesForTeam(options.teamId, client);
+      } else {
+        const sequenceIds = Array.from(
+          new Set(
+            tasks
+              .map((task) => task.sequenceId)
+              .filter((id): id is string => typeof id === 'string' && id.length > 0)
+          )
+        );
+
+        for (const sequenceId of sequenceIds) {
+          await syncSequenceRepliesFromLogs(sequenceId, client);
+        }
+      }
+    } catch (error) {
+      logWorkerEvent('warn', 'Failed to synchronise replies before processing deliveries', {
+        error: error instanceof Error ? error.message : String(error),
+        teamId: options.teamId ?? null
+      });
+    }
+  }
 
   if (tasks.length === 0) {
-    return { scanned: 0, sent: 0, failed: 0, retried: 0, skipped: 0 };
+    diagnostics = await diagnosePendingDeliveries(client, options.teamId);
+
+    if (diagnostics && diagnostics.pendingSequences.length > 0) {
+      const blocked = diagnostics.pendingSequences.filter((entry) => entry.status !== 'active');
+      if (blocked.length > 0) {
+        logWorkerEvent('warn', 'Pending deliveries blocked by lifecycle status', { blocked });
+      } else {
+        logWorkerEvent('info', 'Pending deliveries exist but none ready for current window', {
+          sequences: diagnostics.pendingSequences.length,
+          teamId: options.teamId ?? null
+        });
+      }
+    }
   }
 
   let sent = 0;
@@ -131,6 +551,40 @@ export async function runSequenceWorker(
   let skipped = 0;
 
   for (const task of tasks) {
+    syncWithSystemClock();
+
+    const effectiveMinIntervalMinutes =
+      typeof task.sequenceMinGapMinutes === 'number' && Number.isFinite(task.sequenceMinGapMinutes) &&
+      task.sequenceMinGapMinutes >= 0
+        ? task.sequenceMinGapMinutes
+        : globalMinSendIntervalMinutes;
+    const effectiveMinIntervalMs = Math.max(0, Math.round(effectiveMinIntervalMinutes * 60 * 1000));
+    let throttledForTask = false;
+    let throttleDelayMs = 0;
+    const isManualOverride = task.manualTriggeredAt != null;
+
+    if (!isManualOverride && effectiveMinIntervalMs > 0 && lastSentAtMs !== null) {
+      const elapsed = nowMs - lastSentAtMs;
+      if (elapsed < effectiveMinIntervalMs) {
+        throttleDelayMs = effectiveMinIntervalMs - elapsed;
+        throttledForTask = throttleDelayMs > 0;
+        if (throttledForTask) {
+          await sleep(throttleDelayMs);
+          nowMs += throttleDelayMs;
+          now = new Date(nowMs);
+          syncWithSystemClock();
+          logWorkerEvent('info', 'Delaying send to respect minimum interval', {
+            throttleDelayMs,
+            effectiveMinIntervalMinutes,
+            sequenceMinGapMinutes: task.sequenceMinGapMinutes,
+            globalMinSendIntervalMinutes,
+            lastSentAt: new Date(lastSentAtMs).toISOString()
+          });
+        }
+      }
+    }
+
+    now = new Date(nowMs);
     await client.transaction(async (tx) => {
       // Re-check that the status is still pending to avoid double processing.
       const current = await tx
@@ -147,9 +601,54 @@ export async function runSequenceWorker(
         .limit(1);
 
       const currentState = current[0];
+      const currentAttempts = currentState?.attempts ?? task.attempts ?? 0;
       if (!currentState || currentState.status !== 'pending' || currentState.stepId !== task.stepId) {
+        await recordSkip(tx, task, now, 'status_changed', { attempts: currentAttempts });
+        pushAudit({
+          statusId: task.statusId,
+          sequenceId: task.sequenceId,
+          contactId: task.contactId,
+          stepId: task.stepId,
+          scheduledAt: task.scheduledAt.toISOString(),
+          attempts: currentAttempts,
+          outcome: 'skipped',
+          reason: 'status_changed'
+        });
         skipped += 1;
         return;
+      }
+
+      if (throttledForTask && throttleDelayMs > 0) {
+        await recordThrottleDelay(tx, task, now, {
+          delayMs: throttleDelayMs,
+          minIntervalMinutes: effectiveMinIntervalMinutes
+        });
+      }
+
+      const priorAttempts = currentAttempts;
+      const baseAudit: Omit<SequenceWorkerTaskAudit, 'outcome' | 'reason' | 'error' | 'messageId' | 'rescheduledFor'> = {
+        statusId: task.statusId,
+        sequenceId: task.sequenceId,
+        contactId: task.contactId,
+        stepId: task.stepId,
+        scheduledAt: task.scheduledAt.toISOString(),
+        attempts: priorAttempts
+      };
+      const recordAudit = (
+        outcome: SequenceWorkerTaskOutcome,
+        overrides: Partial<SequenceWorkerTaskAudit> = {}
+      ) => {
+        pushAudit({
+          ...baseAudit,
+          outcome,
+          ...overrides
+        });
+      };
+
+      if (throttledForTask && throttleDelayMs > 0) {
+        recordAudit('delayed', {
+          reason: 'min_send_interval'
+        });
       }
 
       const [sequenceLifecycle] = await tx
@@ -160,6 +659,18 @@ export async function runSequenceWorker(
 
       const activeStatus = sequenceLifecycle?.status ?? task.sequenceStatus;
       if (activeStatus !== 'active') {
+        const skipReason: SequenceSkipReason = sequenceLifecycle?.status === 'paused'
+          ? 'paused'
+          : sequenceLifecycle?.status === 'draft'
+            ? 'draft'
+            : task.sequenceStatus === 'paused'
+              ? 'paused'
+              : 'deleted';
+
+        await recordSkip(tx, task, now, skipReason, { attempts: priorAttempts });
+        recordAudit('skipped', {
+          reason: 'sequence_not_active'
+        });
         skipped += 1;
         return;
       }
@@ -185,6 +696,10 @@ export async function runSequenceWorker(
           })
           .where(eq(contactSequenceStatus.id, task.statusId));
         failed += 1;
+        recordAudit('failed', {
+          attempts: priorAttempts + 1,
+          reason: 'missing_step'
+        });
         return;
       }
 
@@ -198,7 +713,11 @@ export async function runSequenceWorker(
             lastUpdated: now
           })
           .where(eq(contactSequenceStatus.id, task.statusId));
+        await recordSkip(tx, task, now, 'bounce_policy', { attempts: priorAttempts });
         skipped += 1;
+        recordAudit('skipped', {
+          reason: 'bounce_policy'
+        });
         return;
       }
 
@@ -213,7 +732,11 @@ export async function runSequenceWorker(
               lastUpdated: now
             })
             .where(eq(contactSequenceStatus.id, task.statusId));
+          await recordSkip(tx, task, now, 'reply_stop', { attempts: priorAttempts });
           skipped += 1;
+          recordAudit('skipped', {
+            reason: 'reply_policy'
+          });
           return;
         }
 
@@ -221,7 +744,7 @@ export async function runSequenceWorker(
           const resumeAt = new Date(currentState.replyAt.getTime() + stepConfig.delayIfReplied * 60 * 60 * 1000);
           if (resumeAt > now) {
             const scheduleOptions = buildScheduleOptions(task);
-            const fallbackTimezone = task.scheduleFallbackTimezone ?? DEFAULT_FALLBACK_TIMEZONE;
+            const fallbackTimezone = task.scheduleTimezone ?? task.scheduleFallbackTimezone ?? DEFAULT_FALLBACK_TIMEZONE;
             const target = scheduleOptions
               ? computeScheduledUtc({
                   now: resumeAt,
@@ -238,33 +761,62 @@ export async function runSequenceWorker(
                 lastUpdated: now
               })
               .where(eq(contactSequenceStatus.id, task.statusId));
+            await recordSkip(tx, task, now, 'reply_delay', {
+              attempts: priorAttempts,
+              rescheduledFor: target
+            });
             skipped += 1;
+            recordAudit('skipped', {
+              reason: 'reply_delay',
+              rescheduledFor: target.toISOString()
+            });
             return;
           }
         }
       }
 
-  const priorAttempts = currentState.attempts ?? task.attempts ?? 0;
-  const attemptNumber = priorAttempts + 1;
+      const attemptNumber = priorAttempts + 1;
 
       const senderSnapshot = task.sender;
       const isSenderEligible = senderSnapshot && ['verified', 'active'].includes(senderSnapshot.status);
 
       if (!senderSnapshot || !isSenderEligible) {
+        const reason = !senderSnapshot ? 'sender_missing' : 'sender_inactive';
+        const failureMessage = !senderSnapshot
+          ? 'Sequence does not have an active sender assigned'
+          : 'Assigned sender is no longer active or verified';
         await handleFailure(
           tx,
           task,
           now,
-          !senderSnapshot
-            ? 'Sequence does not have an active sender assigned'
-            : 'Assigned sender is no longer active or verified',
+          failureMessage,
           priorAttempts,
           {
             allowRetry: false
           }
         );
+        recordAudit('failed', {
+          attempts: attemptNumber,
+          reason,
+          error: failureMessage
+        });
         failed += 1;
         return;
+      }
+
+      try {
+        await assertCanSendEmails(task.teamId, 1, now, tx);
+      } catch (error) {
+        if (error instanceof PlanLimitExceededError) {
+          await recordSkip(tx, task, now, 'plan_limit', { attempts: priorAttempts });
+          recordAudit('skipped', {
+            reason: 'plan_limit',
+            error: error.message
+          });
+          skipped += 1;
+          return;
+        }
+        throw error;
       }
 
       const sender = {
@@ -277,13 +829,19 @@ export async function runSequenceWorker(
       };
 
       try {
+        if (throttledForTask) {
+          // Sync now if the send was throttled just before dispatch.
+          now = new Date(nowMs);
+        }
         const rendered = renderSequenceContent(task.stepSubject ?? '', task.stepBody ?? '', {
+          email: task.contactEmail,
           firstName: task.contactFirstName,
           lastName: task.contactLastName,
           company: task.contactCompany,
-          email: task.contactEmail,
-          title: null,
-          phone: null
+          tags: task.contactTags ?? undefined,
+          customFieldsById: task.contactCustomFieldsById ?? {},
+          customFieldsByKey: task.contactCustomFieldsByKey ?? {},
+          customFieldsByName: task.contactCustomFieldsByName ?? {}
         });
         const info = await dispatchSequenceEmail({
           sender,
@@ -292,26 +850,70 @@ export async function runSequenceWorker(
           html: rendered.html,
           text: rendered.text
         });
-        await recordSuccess(tx, task, now, info.messageId ?? null, attemptNumber);
+        await recordSuccess(tx, task, now, info.messageId ?? null, attemptNumber, {
+          lastSentAtMs,
+          globalMinSendIntervalMinutes
+        });
+        await trackEmailsSent(task.teamId, 1, now, tx);
+        // lastSentAtMs updated only after success (set below after tracking)
+        recordAudit('sent', {
+          attempts: attemptNumber,
+          messageId: info.messageId ?? null,
+          reason: isManualOverride ? 'manual_send' : undefined
+        });
         sent += 1;
+        lastSentAtMs = now.getTime();
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error while sending email';
-        const result = await handleFailure(tx, task, now, errorMessage, priorAttempts);
+        const result = await handleFailure(tx, task, now, errorMessage, priorAttempts, {
+          allowRetry: !isManualOverride
+        });
         if (result.retried) {
+          recordAudit('retry', {
+            attempts: attemptNumber,
+            reason: 'retryable_error',
+            error: errorMessage
+          });
           retried += 1;
         } else {
+          recordAudit('failed', {
+            attempts: attemptNumber,
+            reason: isManualOverride ? 'manual_send_failure' : 'max_attempts_reached',
+            error: errorMessage
+          });
           failed += 1;
         }
       }
     });
+
+    syncWithSystemClock();
   }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (auditOverflow) {
+    logWorkerEvent('warn', 'Worker audit entries truncated', { maxEntries: MAX_AUDIT_ENTRIES });
+  }
+
+  logWorkerEvent('info', 'Sequence worker run completed', {
+    scanned: tasks.length,
+    sent,
+    failed,
+    retried,
+    skipped,
+    durationMs,
+    teamId: options.teamId ?? null
+  });
 
   return {
     scanned: tasks.length,
     sent,
     failed,
     retried,
-    skipped
+    skipped,
+    durationMs,
+    details: audits,
+    diagnostics
   };
 }
 
@@ -327,6 +929,8 @@ async function fetchPendingDeliveries(
     eq(sequences.status, 'active')
   ];
 
+  conditions.push(isNull(sequences.deletedAt));
+
   if (typeof teamId === 'number') {
     conditions.push(eq(sequences.teamId, teamId));
   }
@@ -340,6 +944,7 @@ async function fetchPendingDeliveries(
       sequenceId: contactSequenceStatus.sequenceId,
       stepId: contactSequenceStatus.stepId,
   sequenceStatus: sequences.status,
+    sequenceMinGapMinutes: sequences.minGapMinutes,
       attempts: contactSequenceStatus.attempts,
       scheduledAt: contactSequenceStatus.scheduledAt,
       replyAt: contactSequenceStatus.replyAt,
@@ -365,13 +970,19 @@ async function fetchPendingDeliveries(
       contactLastName: contacts.lastName,
       contactEmail: contacts.email,
       contactCompany: contacts.company,
+  contactTags: contacts.tags,
       contactTimezone: contacts.timezone,
       scheduleMode: contactSequenceStatus.scheduleMode,
       scheduleSendTime: contactSequenceStatus.scheduleSendTime,
       scheduleWindowStart: contactSequenceStatus.scheduleWindowStart,
       scheduleWindowEnd: contactSequenceStatus.scheduleWindowEnd,
-      scheduleRespectTimezone: contactSequenceStatus.scheduleRespectTimezone,
-      scheduleFallbackTimezone: contactSequenceStatus.scheduleFallbackTimezone
+    scheduleRespectTimezone: contactSequenceStatus.scheduleRespectTimezone,
+    scheduleFallbackTimezone: contactSequenceStatus.scheduleFallbackTimezone,
+    scheduleTimezone: contactSequenceStatus.scheduleTimezone,
+    scheduleSendDays: contactSequenceStatus.scheduleSendDays,
+    scheduleSendWindows: contactSequenceStatus.scheduleSendWindows,
+      manualTriggeredAt: contactSequenceStatus.manualTriggeredAt,
+      manualSentAt: contactSequenceStatus.manualSentAt
     })
     .from(contactSequenceStatus)
     .innerJoin(contacts, eq(contactSequenceStatus.contactId, contacts.id))
@@ -379,7 +990,10 @@ async function fetchPendingDeliveries(
     .innerJoin(sequenceSteps, eq(contactSequenceStatus.stepId, sequenceSteps.id))
   .leftJoin(senders, eq(sequences.senderId, senders.id))
     .where(whereClause)
-    .orderBy(contactSequenceStatus.scheduledAt)
+    .orderBy(
+      sql`CASE WHEN ${contactSequenceStatus.manualTriggeredAt} IS NULL THEN 1 ELSE 0 END`,
+      contactSequenceStatus.scheduledAt
+    )
     .limit(limit);
 
   return rows
@@ -393,6 +1007,10 @@ async function fetchPendingDeliveries(
         sequenceId: row.sequenceId,
         stepId: row.stepId as string,
         sequenceStatus: (row.sequenceStatus as 'active' | 'paused') ?? 'active',
+        sequenceMinGapMinutes:
+          typeof row.sequenceMinGapMinutes === 'number' && Number.isFinite(row.sequenceMinGapMinutes)
+            ? row.sequenceMinGapMinutes
+            : null,
         attempts: row.attempts,
         scheduledAt: row.scheduledAt ?? now,
         teamId: row.teamId,
@@ -404,6 +1022,7 @@ async function fetchPendingDeliveries(
         contactLastName: row.contactLastName,
         contactEmail: row.contactEmail,
         contactCompany: row.contactCompany,
+        contactTags: Array.isArray(row.contactTags) ? row.contactTags : null,
         skipIfReplied: row.skipIfReplied ?? false,
         skipIfBounced: row.skipIfBounced ?? false,
         delayIfReplied: row.delayIfReplied ?? null,
@@ -414,6 +1033,11 @@ async function fetchPendingDeliveries(
         scheduleWindowEnd: row.scheduleWindowEnd ?? null,
         scheduleRespectTimezone: row.scheduleRespectTimezone ?? true,
         scheduleFallbackTimezone: row.scheduleFallbackTimezone ?? null,
+        scheduleTimezone: row.scheduleTimezone ?? null,
+        scheduleSendDays: Array.isArray(row.scheduleSendDays) ? row.scheduleSendDays : null,
+        scheduleSendWindows: Array.isArray(row.scheduleSendWindows) ? row.scheduleSendWindows : null,
+        manualTriggeredAt: row.manualTriggeredAt ?? null,
+        manualSentAt: row.manualSentAt ?? null,
         sender:
           row.senderId &&
           row.senderName &&
@@ -437,25 +1061,309 @@ async function fetchPendingDeliveries(
     });
 }
 
-async function recordSuccess(
+async function hydratePendingDeliveryPersonalisation(
+  client: DatabaseClient,
+  tasks: PendingDelivery[]
+): Promise<PendingDelivery[]> {
+  if (tasks.length === 0) {
+    return tasks;
+  }
+
+  const contactIds = Array.from(new Set(tasks.map((task) => task.contactId))).filter((id) => typeof id === 'string');
+  if (contactIds.length === 0) {
+    return tasks;
+  }
+
+  const teamIds = Array.from(new Set(tasks.map((task) => task.teamId))).filter((id) => typeof id === 'number');
+
+  const fieldConditions: Array<SQL<unknown> | undefined> = [
+    inArray(contactCustomFieldValues.contactId, contactIds)
+  ];
+  if (teamIds.length > 0) {
+    fieldConditions.push(inArray(contactCustomFieldDefinitions.teamId, teamIds));
+  }
+
+  const filteredConditions = fieldConditions.filter(
+    (condition): condition is SQL<unknown> => condition !== undefined
+  );
+
+  const fieldWhere =
+    filteredConditions.length === 1
+      ? filteredConditions[0]
+      : and(...filteredConditions);
+
+  const fieldRows = await client
+    .select({
+      contactId: contactCustomFieldValues.contactId,
+      fieldId: contactCustomFieldValues.fieldId,
+      key: contactCustomFieldDefinitions.key,
+      name: contactCustomFieldDefinitions.name,
+      type: contactCustomFieldDefinitions.type,
+      textValue: contactCustomFieldValues.textValue,
+      numberValue: contactCustomFieldValues.numberValue,
+      dateValue: contactCustomFieldValues.dateValue
+    })
+    .from(contactCustomFieldValues)
+    .innerJoin(
+      contactCustomFieldDefinitions,
+      eq(contactCustomFieldDefinitions.id, contactCustomFieldValues.fieldId)
+    )
+    .where(fieldWhere)
+    .limit(Math.max(contactIds.length * 10, 25));
+
+  const grouped = new Map<
+    string,
+    {
+      byId: Record<string, string>;
+      byKey: Record<string, string>;
+      byName: Record<string, string>;
+    }
+  >();
+
+  for (const row of fieldRows) {
+    let stringValue: string | null = null;
+    switch (row.type) {
+      case 'text':
+        stringValue = row.textValue ?? '';
+        break;
+      case 'number':
+        stringValue = row.numberValue != null ? String(row.numberValue) : null;
+        break;
+      case 'date':
+        stringValue = row.dateValue ? new Date(row.dateValue).toISOString().slice(0, 10) : null;
+        break;
+      default:
+        stringValue = null;
+    }
+
+    if (stringValue == null) {
+      continue;
+    }
+
+    let entry = grouped.get(row.contactId);
+    if (!entry) {
+      entry = { byId: {}, byKey: {}, byName: {} };
+      grouped.set(row.contactId, entry);
+    }
+
+    entry.byId[row.fieldId] = stringValue;
+    entry.byKey[row.key] = stringValue;
+    entry.byName[row.name] = stringValue;
+  }
+
+  for (const task of tasks) {
+    const entry = grouped.get(task.contactId);
+    if (!entry) {
+      task.contactCustomFieldsById = {};
+      task.contactCustomFieldsByKey = {};
+      task.contactCustomFieldsByName = {};
+      continue;
+    }
+    task.contactCustomFieldsById = entry.byId;
+    task.contactCustomFieldsByKey = entry.byKey;
+    task.contactCustomFieldsByName = entry.byName;
+  }
+
+  return tasks;
+}
+
+async function recordSkip(
   tx: any,
   task: PendingDelivery,
   now: Date,
-  messageId: string | null,
-  attemptNumber: number
+  reason: SequenceSkipReason,
+  options: { attempts?: number; rescheduledFor?: Date } = {}
 ) {
-  const scheduleOptions = buildScheduleOptions(task);
-  const fallbackTimezone = task.scheduleFallbackTimezone ?? DEFAULT_FALLBACK_TIMEZONE;
+  const attempts = options.attempts ?? task.attempts ?? 0;
+  const payload = options.rescheduledFor ? { rescheduledFor: options.rescheduledFor.toISOString() } : null;
 
   await tx.insert(deliveryLogs).values({
     contactId: task.contactId,
     sequenceId: task.sequenceId,
     stepId: task.stepId,
-    status: 'sent',
+    statusId: task.statusId,
+    status: 'skipped',
+    messageId: null,
+    errorMessage: null,
+    attempts,
+    skipReason: reason,
+    payload,
+    createdAt: now
+  });
+
+  logWorkerEvent('info', 'Recorded skipped delivery', {
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: 'skipped',
+    messageId: null,
+    skipReason: reason,
+    rescheduledFor: payload?.rescheduledFor ?? null
+  });
+
+  if (task.manualTriggeredAt) {
+    await tx
+      .update(contactSequenceStatus)
+      .set({ manualTriggeredAt: null })
+      .where(eq(contactSequenceStatus.id, task.statusId));
+  }
+}
+
+async function recordThrottleDelay(
+  tx: any,
+  task: PendingDelivery,
+  now: Date,
+  options: { delayMs: number; minIntervalMinutes: number }
+) {
+  await tx.insert(deliveryLogs).values({
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: 'delayed',
+    messageId: null,
+    errorMessage: null,
+    attempts: task.attempts ?? 0,
+    skipReason: null,
+    type: 'throttle',
+    payload: {
+      reason: 'delayed_due_to_min_gap',
+      delayMs: options.delayMs,
+      minIntervalMinutes: options.minIntervalMinutes
+    },
+    createdAt: now
+  });
+
+  logWorkerEvent('info', 'Recorded throttle delay', {
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: 'delayed',
+    messageId: null,
+    delayMs: options.delayMs,
+    minIntervalMinutes: options.minIntervalMinutes
+  });
+}
+
+async function recordStepDelay(
+  tx: any,
+  task: PendingDelivery,
+  now: Date,
+  options: { delayMs: number; stepDelayHours: number; effectiveMinIntervalMinutes: number; rescheduledFor: Date; reason: 'step_delay' | 'min_gap' }
+) {
+  const reason = options.reason;
+  await tx.insert(deliveryLogs).values({
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: 'delayed',
+    messageId: null,
+    errorMessage: null,
+    attempts: task.attempts ?? 0,
+    skipReason: null,
+    type: 'delay',
+    payload: {
+      reason,
+      delayMs: options.delayMs,
+      stepDelayHours: options.stepDelayHours,
+      effectiveMinIntervalMinutes: options.effectiveMinIntervalMinutes,
+      rescheduledFor: options.rescheduledFor.toISOString()
+    },
+    createdAt: now
+  });
+
+  logWorkerEvent('info', 'Recorded step delay', {
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: 'delayed',
+    messageId: null,
+    delayMs: options.delayMs,
+    reason: reason,
+    effectiveMinIntervalMinutes: options.effectiveMinIntervalMinutes,
+    rescheduledFor: options.rescheduledFor.toISOString()
+  });
+}
+
+export function computeEffectiveNextSchedule(
+  desired: Date,
+  now: Date,
+  lastSentAtMs: number | null,
+  sequenceMinGapMinutes: number | null,
+  globalMinSendIntervalMinutes: number
+): { scheduleAt: Date; delayedByMs: number; reason: 'step_delay' | 'min_gap' | null; effectiveMinIntervalMinutes: number } {
+  const sequenceMin = typeof sequenceMinGapMinutes === 'number' && Number.isFinite(sequenceMinGapMinutes) ? sequenceMinGapMinutes : null;
+  const effectiveMin = Math.max(globalMinSendIntervalMinutes, sequenceMin ?? 0);
+  const effectiveMinMs = Math.max(0, Math.round(effectiveMin * 60 * 1000));
+
+  let scheduleAt = desired;
+  let delayedByMs = 0;
+  let reason: 'step_delay' | 'min_gap' | null = null;
+
+  // If the desired time itself is in the future relative to now, that's a step-based delay.
+  if (desired.getTime() > now.getTime()) {
+    reason = 'step_delay';
+    delayedByMs = desired.getTime() - now.getTime();
+  }
+
+  if (lastSentAtMs != null && effectiveMinMs > 0) {
+    const earliest = new Date(lastSentAtMs + effectiveMinMs);
+    if (earliest.getTime() > scheduleAt.getTime()) {
+      const additionalDelay = earliest.getTime() - scheduleAt.getTime();
+      delayedByMs += additionalDelay;
+      scheduleAt = earliest;
+      reason = 'min_gap';
+    }
+  }
+
+  // If scheduleAt is still in the past relative to now, clamp to now (no negative schedules)
+  if (scheduleAt.getTime() < now.getTime()) {
+    scheduleAt = now;
+    // if we clamped to now, there's no remaining step delay
+    reason = null;
+    delayedByMs = 0;
+  }
+
+  return { scheduleAt, delayedByMs, reason, effectiveMinIntervalMinutes: effectiveMin };
+}
+
+async function recordSuccess(
+  tx: any,
+  task: PendingDelivery,
+  now: Date,
+  messageId: string | null,
+  attemptNumber: number,
+  options?: { lastSentAtMs?: number | null; globalMinSendIntervalMinutes?: number }
+) {
+  const scheduleOptions = buildScheduleOptions(task);
+  const fallbackTimezone = task.scheduleTimezone ?? task.scheduleFallbackTimezone ?? DEFAULT_FALLBACK_TIMEZONE;
+  const isManual = task.manualTriggeredAt != null;
+  const deliveryStatus: 'sent' | 'manual_send' = isManual ? 'manual_send' : 'sent';
+
+  await tx.insert(deliveryLogs).values({
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: deliveryStatus,
     messageId,
     errorMessage: null,
     attempts: attemptNumber,
+    skipReason: null,
     createdAt: now
+  });
+
+  logWorkerEvent('info', 'Recorded successful delivery', {
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    stepId: task.stepId,
+    statusId: task.statusId,
+    status: deliveryStatus,
+    messageId
   });
 
   const [nextStep] = await tx
@@ -466,16 +1374,33 @@ async function recordSuccess(
     .limit(1);
 
   if (nextStep) {
-    const delayHours = nextStep.delay ?? 0;
-    const scheduleAt = scheduleOptions
+    const rawDelayHours = isFiniteNumber(nextStep.delay) ? nextStep.delay : 0;
+    const delayComponents = resolveDelayFromHours(rawDelayHours);
+    const globalMin = options?.globalMinSendIntervalMinutes ?? getMinSendIntervalMinutes();
+    const nextSend = computeNextSendAt(now, delayComponents.value, delayComponents.unit, globalMin);
+    const stepDelayHoursUsed = nextSend.stepDelayMinutes / MINUTES_PER_HOUR;
+
+    const desired = scheduleOptions
       ? computeScheduledUtc({
           now,
-          stepDelayHours: delayHours,
+          stepDelayHours: stepDelayHoursUsed,
           contactTimezone: task.contactTimezone,
           fallbackTimezone,
           schedule: scheduleOptions
         })
-      : new Date(now.getTime() + delayHours * 60 * 60 * 1000);
+      : nextSend.desiredAt;
+
+    const lastSent = options?.lastSentAtMs ?? null;
+    const effectiveMinForSchedule = Math.max(nextSend.effectiveMinGapMinutes, task.sequenceMinGapMinutes ?? 0);
+
+    const { scheduleAt, delayedByMs, reason, effectiveMinIntervalMinutes } = computeEffectiveNextSchedule(
+      desired,
+      now,
+      lastSent,
+      task.sequenceMinGapMinutes,
+      effectiveMinForSchedule
+    );
+
     await tx
       .update(contactSequenceStatus)
       .set({
@@ -484,9 +1409,29 @@ async function recordSuccess(
         sentAt: null,
         attempts: 0,
         status: 'pending',
-        lastUpdated: now
+        lastUpdated: now,
+        manualTriggeredAt: null,
+        manualSentAt: isManual ? now : task.manualSentAt ?? null
       })
       .where(eq(contactSequenceStatus.id, task.statusId));
+
+    if (reason && delayedByMs > 0) {
+      await recordStepDelay(tx, task, now, {
+        delayMs: delayedByMs,
+  stepDelayHours: stepDelayHoursUsed,
+        effectiveMinIntervalMinutes: effectiveMinIntervalMinutes,
+        rescheduledFor: scheduleAt,
+        reason: reason === 'min_gap' ? 'min_gap' : 'step_delay'
+      });
+
+      logWorkerEvent('info', 'Delaying next step send', {
+        reason,
+        delayMs: delayedByMs,
+        effectiveMinIntervalMinutes,
+        rescheduledFor: scheduleAt.toISOString(),
+        stepDelayHours: stepDelayHoursUsed
+      });
+    }
   } else {
     await tx
       .update(contactSequenceStatus)
@@ -496,7 +1441,9 @@ async function recordSuccess(
         sentAt: now,
         attempts: 0,
         status: 'sent',
-        lastUpdated: now
+        lastUpdated: now,
+        manualTriggeredAt: null,
+        manualSentAt: isManual ? now : task.manualSentAt ?? null
       })
       .where(eq(contactSequenceStatus.id, task.statusId));
   }
@@ -511,16 +1458,25 @@ async function handleFailure(
   options: { allowRetry?: boolean } = {}
 ) {
   const attemptNumber = previousAttempts + 1;
-  const shouldRetry = options.allowRetry !== false && attemptNumber < MAX_SEND_ATTEMPTS;
+  const isManual = task.manualTriggeredAt != null;
+  const allowRetry = options.allowRetry !== false;
+  const shouldRetry = !isManual && allowRetry && attemptNumber < MAX_SEND_ATTEMPTS;
+  const logStatus: 'retrying' | 'failed' | 'manual_send' = isManual
+    ? 'manual_send'
+    : shouldRetry
+      ? 'retrying'
+      : 'failed';
 
   await tx.insert(deliveryLogs).values({
     contactId: task.contactId,
     sequenceId: task.sequenceId,
     stepId: task.stepId,
-    status: shouldRetry ? 'retrying' : 'failed',
+    statusId: task.statusId,
+    status: logStatus,
     messageId: null,
     errorMessage: error,
     attempts: attemptNumber,
+    skipReason: null,
     createdAt: now
   });
 
@@ -531,7 +1487,9 @@ async function handleFailure(
       .set({
         attempts: attemptNumber,
         scheduledAt: retryAt,
-        lastUpdated: now
+        lastUpdated: now,
+        manualTriggeredAt: null,
+        manualSentAt: task.manualSentAt ?? null
       })
       .where(eq(contactSequenceStatus.id, task.statusId));
   } else {
@@ -541,7 +1499,9 @@ async function handleFailure(
         attempts: attemptNumber,
         status: 'failed',
         scheduledAt: null,
-        lastUpdated: now
+        lastUpdated: now,
+        manualTriggeredAt: null,
+        manualSentAt: task.manualSentAt ?? null
       })
       .where(eq(contactSequenceStatus.id, task.statusId));
   }

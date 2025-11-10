@@ -1,0 +1,2 @@
+-- Placeholder migration referenced in the Drizzle journal.
+-- Original manual migration executed outside of source control.

@@ -20,7 +20,7 @@ import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { createCheckoutSession } from '@/lib/payments/stripe';
-import { getUser, getUserWithTeam } from '@/lib/db/queries';
+import { calculateTrialExpiry, getUser, getUserWithTeam } from '@/lib/db/queries';
 import {
   validatedAction,
   validatedActionWithUser
@@ -49,13 +49,21 @@ const signInSchema = z.object({
   password: z.string().min(8).max(100)
 });
 
-export const signIn = validatedAction(signInSchema, async (data, formData) => {
-  const { email, password } = data;
-
-  const userWithTeam = await db
+async function fetchUserWithTeam(email: string) {
+  const rows = await db
     .select({
       user: users,
-      team: teams
+      team: {
+        id: teams.id,
+        name: teams.name,
+        createdAt: teams.createdAt,
+        updatedAt: teams.updatedAt,
+        planName: teams.planName,
+        subscriptionStatus: teams.subscriptionStatus,
+        stripeCustomerId: teams.stripeCustomerId,
+        stripeSubscriptionId: teams.stripeSubscriptionId,
+        stripeProductId: teams.stripeProductId
+      }
     })
     .from(users)
     .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
@@ -63,7 +71,23 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     .where(eq(users.email, email))
     .limit(1);
 
-  if (userWithTeam.length === 0) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const [{ user, team }] = rows;
+  return {
+    user,
+    team: team && team.id !== null ? { ...team, paymentStatus: 'unpaid' as const } : null
+  };
+}
+
+export const signIn = validatedAction(signInSchema, async (data, formData) => {
+  const { email, password } = data;
+
+  const row = await fetchUserWithTeam(email);
+
+  if (!row) {
     return {
       error: 'Invalid email or password. Please try again.',
       email,
@@ -71,7 +95,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     };
   }
 
-  const { user: foundUser, team: foundTeam } = userWithTeam[0];
+  const { user: foundUser, team: foundTeam } = row;
 
   const isPasswordValid = await comparePasswords(
     password,
@@ -137,11 +161,15 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
 
   const passwordHash = await hashPassword(password);
 
+  const signupDate = new Date();
   const newUser: NewUser = {
     name,
     email,
     passwordHash,
-    role: 'owner' // Default role, will be overridden if there's an invitation
+    role: 'user', // Default global role; team ownership handled via invitations
+    signupDate,
+    trialExpiresAt: calculateTrialExpiry(signupDate),
+    status: 'active'
   };
 
   const [createdUser] = await db.insert(users).values(newUser).returning();
@@ -411,7 +439,8 @@ export const removeTeamMember = validatedActionWithUser(
     );
 
     return { success: 'Team member removed successfully' };
-  }
+  },
+  { requireActive: true }
 );
 
 const inviteTeamMemberSchema = z.object({
@@ -478,5 +507,6 @@ export const inviteTeamMember = validatedActionWithUser(
     // await sendInvitationEmail(email, userWithTeam.team.name, role)
 
     return { success: 'Invitation sent successfully' };
-  }
+  },
+  { requireActive: true }
 );

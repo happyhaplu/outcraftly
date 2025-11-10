@@ -58,7 +58,16 @@ describe('GET /api/internal/cron/sequence-worker', () => {
   });
 
   it('executes the worker with parsed parameters', async () => {
-    runSequenceWorkerMock.mockResolvedValueOnce({ scanned: 3, sent: 2, failed: 0, retried: 1, skipped: 0 });
+    runSequenceWorkerMock.mockResolvedValueOnce({
+      scanned: 3,
+      sent: 2,
+      failed: 0,
+      retried: 1,
+      skipped: 0,
+      durationMs: 123,
+      details: [],
+      diagnostics: null
+    });
 
     const request = new Request('http://localhost/api/internal/cron/sequence-worker?token=test-secret&limit=50&teamId=12');
     const response = await GET(request);

@@ -17,7 +17,8 @@ import {
   CreditCard,
   LifeBuoy,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -139,6 +140,9 @@ function UserMenu() {
           <p className="truncate text-xs text-muted-foreground">
             {user.email}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Plan: <span className="font-medium text-foreground">{user.plan ?? 'Starter'}</span>
+          </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {accountMenu.map((item) => (
@@ -203,6 +207,9 @@ function SidebarAccount({ collapsed }: { collapsed: boolean }) {
               {user.name || 'Account'}
             </p>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Plan: <span className="font-medium text-foreground">{user.plan ?? 'Starter'}</span>
+            </p>
           </div>
           <button
             type="button"
@@ -214,6 +221,30 @@ function SidebarAccount({ collapsed }: { collapsed: boolean }) {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+function TrialExpiredNotice() {
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 rounded-3xl border border-destructive/40 bg-destructive/5 px-10 py-16 text-center">
+      <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <AlertTriangle className="h-7 w-7" />
+      </div>
+      <div className="space-y-3">
+        <h1 className="text-3xl font-semibold text-destructive">Your trial has expired</h1>
+        <p className="text-base text-muted-foreground">
+          Your workspace is currently inactive because the 7-day trial ended. Contact support or upgrade to a paid plan to continue sending sequences and managing outreach.
+        </p>
+      </div>
+      <div className="flex flex-wrap justify-center gap-3">
+        <Button asChild>
+          <Link href="/pricing">View plans</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <a href="mailto:support@outcraftly.com">Contact support</a>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -245,6 +276,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { data: activeUser } = useSWR<User>('/api/user', fetcher);
+  const trialInactive = activeUser?.status === 'inactive';
 
   const closeMobile = () => setMobileOpen(false);
   const isSidebarCollapsed = isCollapsed && !mobileOpen;
@@ -346,7 +379,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col lg:pl-0">
         <Header onToggle={() => setMobileOpen((prev) => !prev)} />
         <main className="flex-1 bg-background px-4 py-8 sm:px-6 lg:px-10">
-          <div className="mx-auto w-full max-w-6xl space-y-8">{children}</div>
+          {trialInactive ? (
+            <TrialExpiredNotice />
+          ) : (
+            <div className="mx-auto w-full max-w-6xl space-y-8">{children}</div>
+          )}
         </main>
       </div>
     </section>

@@ -52,8 +52,30 @@ export function createBlankState(): SequenceBuilderState {
     id: null,
     name: '',
     steps: [createDefaultStep(1)],
-    status: 'active',
-    senderId: null
+    status: 'draft',
+    launchAt: null,
+    launchedAt: null,
+    senderId: null,
+    tracking: {
+      trackOpens: true,
+      trackClicks: true,
+      enableUnsubscribe: true
+    },
+    schedule: {
+      mode: 'immediate',
+      sendTime: null,
+      sendWindowStart: null,
+      sendWindowEnd: null,
+      respectContactTimezone: true,
+      fallbackTimezone: null,
+      timezone: null,
+      sendDays: [],
+      sendWindows: []
+    },
+    stopCondition: 'on_reply',
+    stopOnBounce: false,
+    minGapMinutes: null,
+    contactIds: []
   };
 }
 
@@ -86,7 +108,34 @@ export function mapDetailToBuilder(detail: SequenceDetail): SequenceBuilderState
     steps: mappedSteps,
     updatedAt: detail.updatedAt,
     status: detail.status,
-    senderId: detail.senderId ?? null
+    launchAt: detail.launchAt ?? null,
+    launchedAt: detail.launchedAt ?? null,
+    senderId: detail.senderId ?? null,
+    tracking: detail.tracking ?? {
+      trackOpens: true,
+      trackClicks: true,
+      enableUnsubscribe: true
+    },
+    schedule: {
+      mode: detail.schedule?.mode ?? 'immediate',
+      sendTime: detail.schedule?.sendTime ?? null,
+      sendWindowStart: detail.schedule?.sendWindowStart ?? null,
+      sendWindowEnd: detail.schedule?.sendWindowEnd ?? null,
+      respectContactTimezone: detail.schedule?.respectContactTimezone ?? true,
+      fallbackTimezone: detail.schedule?.fallbackTimezone ?? null,
+      timezone: detail.schedule?.timezone ?? null,
+      sendDays: Array.isArray(detail.schedule?.sendDays)
+        ? [...(detail.schedule?.sendDays ?? [])]
+        : [],
+      sendWindows: Array.isArray(detail.schedule?.sendWindows)
+        ? [...(detail.schedule?.sendWindows ?? [])]
+        : []
+    },
+    stopCondition: detail.stopCondition ?? 'on_reply',
+    stopOnBounce: detail.stopOnBounce ?? false,
+    minGapMinutes: detail.minGapMinutes ?? null,
+    // contact enrollment has moved to the Sequence Status UI; keep builder contactIds empty
+    contactIds: []
   };
 }
 
@@ -106,9 +155,21 @@ export function validateBuilderSteps(steps: BuilderStep[]) {
 export type SequenceUpdatePayload = ReturnType<typeof buildPayloadFromState>;
 
 export function buildPayloadFromState(state: SequenceBuilderState) {
+  const uniqueContactIds = Array.from(
+    new Set(
+      (state.contactIds ?? []).filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    )
+  );
   return {
     name: state.name.trim(),
     senderId: state.senderId,
+    launchAt: state.launchAt ?? null,
+    contactIds: uniqueContactIds,
+    contacts: uniqueContactIds,
+    minGapMinutes:
+      typeof state.minGapMinutes === 'number' && Number.isFinite(state.minGapMinutes)
+        ? Math.max(0, Math.floor(state.minGapMinutes))
+        : null,
     steps: state.steps.map((step, index) => ({
       id: step.backendId,
       subject: step.subject.trim(),
@@ -137,6 +198,22 @@ export function normaliseTimestamp(value: unknown) {
     }
   }
   return new Date().toISOString();
+}
+
+export function normaliseNullableTimestamp(value: unknown) {
+  if (value == null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return null;
 }
 
 const TOKEN_PATTERN = /\{\{([a-zA-Z0-9]+)\}\}/g;

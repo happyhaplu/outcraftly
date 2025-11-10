@@ -1,27 +1,35 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const listRepliesMock = vi.fn();
 const listBouncesMock = vi.fn();
 
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
+
 type GetRoute = (request: Request, context: { params: { id: string } }) => Promise<Response>;
 let GET: GetRoute;
 
-vi.mock('@/lib/db/queries', () => ({
-  getUser: getUserMock,
-  getTeamForUser: getTeamForUserMock,
-  listSequenceRepliesForTeam: listRepliesMock,
-  listSequenceBouncesForTeam: listBouncesMock
-}));
+vi.mock('@/lib/db/queries', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/queries')>('@/lib/db/queries');
+  return {
+    ...actual,
+    getActiveUser: getActiveUserMock,
+    getTeamForUser: getTeamForUserMock,
+    listSequenceRepliesForTeam: listRepliesMock,
+    listSequenceBouncesForTeam: listBouncesMock
+  };
+});
 
 beforeAll(async () => {
   ({ GET } = await import('@/app/api/sequences/replies/[id]/route'));
+  ({ UnauthorizedError: UnauthorizedErrorRef, InactiveTrialError: InactiveTrialErrorRef } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getUserMock.mockResolvedValue({ id: 7 });
+  getActiveUserMock.mockResolvedValue({ id: 7 });
   getTeamForUserMock.mockResolvedValue({ id: 42 });
   listRepliesMock.mockResolvedValue([
     {
@@ -83,7 +91,7 @@ describe('GET /api/sequences/replies/:id', () => {
   });
 
   it('rejects unauthenticated requests', async () => {
-    getUserMock.mockResolvedValueOnce(null);
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
 
     const response = await GET(new Request('http://localhost/api/sequences/replies/11111111-2222-3333-4444-555555555555'), {
       params: { id: '11111111-2222-3333-4444-555555555555' }
@@ -109,5 +117,15 @@ describe('GET /api/sequences/replies/:id', () => {
 
     expect(response.status).toBe(400);
     expect(listRepliesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects inactive trial accounts', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const response = await GET(new Request('http://localhost/api/sequences/replies/11111111-2222-3333-4444-555555555555'), {
+      params: { id: '11111111-2222-3333-4444-555555555555' }
+    });
+
+    expect(response.status).toBe(403);
   });
 });

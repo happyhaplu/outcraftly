@@ -4,8 +4,35 @@ export type ContactListItem = {
   lastName: string;
   email: string;
   company: string;
+  jobTitle: string | null;
   tags: string[];
   createdAt: string;
+  customFields?: Record<string, string | number | null>;
+};
+
+export type ContactCustomFieldDefinition = {
+  id: string;
+  name: string;
+  key: string;
+  type: 'text' | 'number' | 'date';
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactCustomFieldValueMap = Record<string, string | number | null>;
+
+export type ContactDetail = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  company: string;
+  jobTitle: string | null;
+  timezone: string | null;
+  tags: string[];
+  createdAt: string;
+  customFields: ContactCustomFieldValueMap;
 };
 
 export type UploadSummary = {

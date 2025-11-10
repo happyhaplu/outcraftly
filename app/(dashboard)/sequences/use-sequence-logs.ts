@@ -27,9 +27,26 @@ const fetchLogs = async (url: string): Promise<SequenceLogsResponse> => {
 	}
 
 	const payload = (await response.json()) as SequenceLogsResponse;
+	const safeLogs = Array.isArray(payload.logs)
+		? payload.logs.map((log) => {
+				const rawType = (log as any).type;
+				const type = rawType === 'reply' || rawType === 'bounce' || rawType === 'send' ? rawType : null;
+
+				return {
+					...log,
+					type,
+					delayReason: typeof (log as any).delayReason === 'string' ? (log as any).delayReason : null,
+					delayMs: typeof (log as any).delayMs === 'number' ? (log as any).delayMs : null,
+					minIntervalMinutes:
+						typeof (log as any).minIntervalMinutes === 'number'
+							? (log as any).minIntervalMinutes
+							: null
+				};
+		  })
+		: [];
 
 	return {
-		logs: Array.isArray(payload.logs) ? payload.logs : [],
+		logs: safeLogs,
 		page: typeof payload.page === 'number' ? payload.page : 1,
 		pageSize: typeof payload.pageSize === 'number' ? payload.pageSize : 20,
 		total: typeof payload.total === 'number' ? payload.total : 0,

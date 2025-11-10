@@ -1,11 +1,27 @@
 import { NextResponse } from 'next/server';
 
-import { getSendersForTeam, getTeamForUser, getUser } from '@/lib/db/queries';
+import {
+  getSendersForTeam,
+  getTeamForUser,
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
+} from '@/lib/db/queries';
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    await getActiveUser();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
+    throw error;
   }
 
   const team = await getTeamForUser();

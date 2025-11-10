@@ -1,13 +1,14 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Copy, Loader2, Settings2, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Loader2, Send, Settings2, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -70,15 +71,23 @@ export function SequenceStepCard({
   const { toast } = useToast();
 
   const detectedTokens = useMemo(() => {
-    const pattern = /\{\{([a-zA-Z0-9]+)\}\}/g;
+    const pattern = /\{\{\s*([^}]+?)\s*\}\}/g;
     const matches = new Set<string>();
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(step.subject)) !== null) {
-      matches.add(match[1]);
-    }
-    while ((match = pattern.exec(step.body)) !== null) {
-      matches.add(match[1]);
-    }
+    const scan = (input: string) => {
+      if (!input) {
+        return;
+      }
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(input)) !== null) {
+        const token = match[1]?.trim();
+        if (token) {
+          matches.add(token);
+        }
+      }
+    };
+    scan(step.subject ?? '');
+    scan(step.body ?? '');
     return Array.from(matches.values());
   }, [step.subject, step.body]);
 
@@ -188,78 +197,110 @@ export function SequenceStepCard({
 
   return (
     <>
-      <div className={cn('rounded-xl border border-border/60 bg-muted/30 p-5 shadow-sm transition-colors')}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-            {index + 1}
-          </span>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Step {index + 1}</p>
-            <p className="text-sm text-muted-foreground">Email touchpoint</p>
+      <div
+        className={cn(
+          'rounded-2xl border border-border/70 bg-background px-6 py-6 shadow-sm transition-colors'
+        )}
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex size-9 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary">
+              {index + 1}
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Step {index + 1}
+              </p>
+              <p className="text-sm text-muted-foreground">Email touchpoint</p>
+            </div>
           </div>
+          <TooltipProvider>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleOpenTestDialog}
+                disabled={!canSendTest}
+                className="h-9 gap-2"
+                aria-label={canSendTest ? 'Send test email' : 'Save this step to send a test email'}
+                title={canSendTest ? undefined : 'Save this step to send a test email.'}
+              >
+                <Send className="h-4 w-4" aria-hidden />
+                Send test
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => onDuplicate(step.internalId)}
+                    aria-label="Duplicate step"
+                  >
+                    <Copy className="h-4 w-4" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Duplicate step</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-destructive"
+                    onClick={() => onDelete(step.internalId)}
+                    disabled={disableDelete}
+                    aria-label="Delete step"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {disableDelete ? 'At least one step is required' : 'Delete step'}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => onMoveUp(step.internalId)}
+                    disabled={!canMoveUp}
+                    aria-label="Move step up"
+                  >
+                    <ArrowUp className="h-4 w-4" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Move up</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={() => onMoveDown(step.internalId)}
+                    disabled={!canMoveDown}
+                    aria-label="Move step down"
+                  >
+                    <ArrowDown className="h-4 w-4" aria-hidden />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Move down</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleOpenTestDialog}
-            disabled={!canSendTest}
-            title={canSendTest ? undefined : 'Save this step to send a test email.'}
-            className="h-9"
-          >
-            Send test
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => onDuplicate(step.internalId)}
-            aria-label="Duplicate step"
-          >
-            <Copy className="h-4 w-4" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 text-destructive"
-            onClick={() => onDelete(step.internalId)}
-            disabled={disableDelete}
-            aria-label="Delete step"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => onMoveUp(step.internalId)}
-            disabled={!canMoveUp}
-            aria-label="Move step up"
-          >
-            <ArrowUp className="h-4 w-4" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => onMoveDown(step.internalId)}
-            disabled={!canMoveDown}
-            aria-label="Move step down"
-          >
-            <ArrowDown className="h-4 w-4" aria-hidden />
-          </Button>
-        </div>
-      </div>
 
-      <div className="mt-4 grid gap-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
+    <div className="mt-6 grid gap-6">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Label htmlFor={`sequence-step-subject-${step.internalId}`}>Subject</Label>
             <TokenDropdown
               onInsert={(token) => handleTokenInsert('subject', token)}
@@ -276,8 +317,8 @@ export function SequenceStepCard({
           />
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Label>Email body</Label>
             <TokenDropdown onInsert={(token) => handleTokenInsert('body', token)} disabled={false} align="end" />
           </div>
@@ -289,11 +330,11 @@ export function SequenceStepCard({
           />
           {detectedTokens.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>Tokens used:</span>
+              <span className="font-medium text-foreground/80">Tokens:</span>
               {detectedTokens.map((token) => (
                 <span
                   key={`${step.internalId}-${token}`}
-                  className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary"
+                  className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 font-medium text-primary"
                 >
                   {`{{${token}}}`}
                 </span>
@@ -302,14 +343,14 @@ export function SequenceStepCard({
           )}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-          <div className="space-y-1">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="space-y-1.5">
             <Label htmlFor={`sequence-step-delay-${step.internalId}`}>Delay before sending</Label>
-            <span className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Wait time before the platform sends this step.
-            </span>
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Input
               id={`sequence-step-delay-${step.internalId}`}
               type="number"
@@ -324,7 +365,7 @@ export function SequenceStepCard({
             <select
               value={step.delayUnit}
               onChange={(event) => onUpdate(step.internalId, { delayUnit: event.target.value as 'hours' | 'days' })}
-              className="h-10 rounded-md border border-border/60 bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="h-10 rounded-lg border border-border/60 bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {delayUnitOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -335,8 +376,8 @@ export function SequenceStepCard({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/60 bg-background/60">
-          <div className="flex items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
+        <div className="rounded-2xl border border-border/60 bg-muted/20">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-5 py-4">
             <div>
               <p className="text-sm font-medium text-foreground">Advanced engagement options</p>
               <p className="text-xs text-muted-foreground">
@@ -356,7 +397,7 @@ export function SequenceStepCard({
           </div>
 
           {showAdvanced ? (
-            <div className="space-y-4 px-4 py-4">
+            <div className="space-y-4 px-5 py-5">
               <div className="flex items-start gap-3">
                 <Checkbox
                   id={`sequence-step-skip-replied-${step.internalId}`}
@@ -410,7 +451,7 @@ export function SequenceStepCard({
                 </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                 <div className="space-y-1">
                   <Label htmlFor={`sequence-step-delay-replied-${step.internalId}`}>Pause after a reply</Label>
                   <span className="text-xs text-muted-foreground">
@@ -453,7 +494,7 @@ export function SequenceStepCard({
         </div>
       </div>
 
-        <p className="mt-4 text-xs text-muted-foreground">
+  <p className="mt-6 text-xs text-muted-foreground">
           Step {index + 1} of {totalSteps}. Use the move buttons to adjust ordering.
         </p>
       </div>

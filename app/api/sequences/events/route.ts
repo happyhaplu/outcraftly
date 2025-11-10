@@ -69,20 +69,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
 
-  const events: SequenceInboundEvent[] = Array.isArray((parsedBody as any).events)
+  const events = Array.isArray((parsedBody as any).events)
     ? (parsedBody as { events: z.infer<typeof eventSchema>[] }).events
     : [parsedBody as z.infer<typeof eventSchema>];
 
-  const results = await recordSequenceEvents(
-    events.map((event) => ({
-      type: event.type,
-      messageId: event.messageId ?? null,
-      contactId: event.contactId ?? null,
-      sequenceId: event.sequenceId ?? null,
-      occurredAt: event.occurredAt ?? new Date(),
-      payload: event.payload ?? null
-    }))
-  );
+  const normalizedEvents: SequenceInboundEvent[] = events.map((event) => ({
+    type: event.type,
+    messageId: event.messageId ?? null,
+    contactId: event.contactId ?? null,
+    sequenceId: event.sequenceId ?? null,
+    occurredAt: event.occurredAt ?? new Date(),
+    payload: event.payload ?? null
+  }));
+
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      console.groupCollapsed?.('[SequenceEvents] inbound request', {
+        count: normalizedEvents.length,
+        types: Array.from(new Set(normalizedEvents.map((event) => event.type))).sort()
+      });
+      console.log?.('[SequenceEvents] normalized events', normalizedEvents);
+      console.groupEnd?.();
+    } catch (error) {
+      console.warn?.('[SequenceEvents] failed to log inbound request', error);
+    }
+  }
+
+  const results = await recordSequenceEvents(normalizedEvents);
 
   return NextResponse.json({ processed: results }, { status: 200 });
 }

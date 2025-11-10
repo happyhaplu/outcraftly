@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
 
-import { getTeamForUser, getUser, insertContacts } from '@/lib/db/queries';
+import {
+  getTeamForUser,
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE,
+  PlanLimitExceededError,
+  createContactWithCustomFields,
+  InvalidCustomFieldValueError
+} from '@/lib/db/queries';
 import { contactCreateSchema } from '@/lib/validation/contact';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -42,9 +48,18 @@ export async function POST(request: Request) {
       tags: data.data.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)
     };
 
-    const inserted = await insertContacts(team.id, [payload]);
+    const inserted = await createContactWithCustomFields(team.id, {
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      company: payload.company,
+      jobTitle: payload.jobTitle,
+      tags: payload.tags,
+      timezone: payload.timezone,
+      customFields: payload.customFields ?? undefined
+    });
 
-    if (inserted === 0) {
+    if (!inserted) {
       return NextResponse.json(
         { error: 'A contact with this email already exists.' },
         { status: 409 }
@@ -56,6 +71,33 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
+    if (error instanceof PlanLimitExceededError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          resource: error.resource,
+          limit: error.limit,
+          remaining: error.remaining
+        },
+        { status: 403 }
+      );
+    }
+
+    if (error instanceof InvalidCustomFieldValueError) {
+      return NextResponse.json(
+        { error: error.message, fieldId: error.fieldId },
+        { status: 400 }
+      );
+    }
+
     console.error('Failed to create contact', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

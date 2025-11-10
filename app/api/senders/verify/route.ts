@@ -4,8 +4,11 @@ import { ZodError, z } from 'zod';
 import {
   getSenderForTeam,
   getTeamForUser,
-  getUser,
-  updateSenderStatus
+  getActiveUser,
+  updateSenderStatus,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
 import { decryptSecret } from '@/lib/security/encryption';
 import { verifySmtpConnection } from '@/lib/mail/smtp';
@@ -26,10 +29,7 @@ function formatValidationError(error: ZodError) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -97,6 +97,14 @@ export async function POST(request: Request) {
       );
     }
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     if (error instanceof ZodError) {
       return NextResponse.json(
         {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -20,7 +20,13 @@ import { SequenceBuilder } from '../SequenceBuilder';
 import { SequencePreviewDialog } from '../SequencePreviewDialog';
 import { SequenceStatusView } from '../SequenceStatusView';
 import { useSequenceBuilderState } from '../use-sequence-builder';
-import { arePayloadsEqual, buildPayloadFromState, mapDetailToBuilder } from '../utils';
+import {
+  arePayloadsEqual,
+  buildPayloadFromState,
+  createBlankState,
+  mapDetailToBuilder,
+  type SequenceUpdatePayload
+} from '../utils';
 import type { SequenceDetail } from '../types';
 
 type SequenceEditorProps = {
@@ -32,34 +38,62 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
   const router = useRouter();
   const { toast } = useToast();
 
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  const blankBuilderState = useMemo(() => createBlankState(), []);
   const initialBuilderState = useMemo(() => mapDetailToBuilder(initialSequence), [initialSequence]);
 
   const {
     state: builderState,
     setName: handleNameChange,
     setSenderId: handleSenderChange,
+    setLaunchAt: handleLaunchAtChange,
+    setMinGapMinutes: handleMinGapMinutesChange,
     updateStep: handleUpdateStep,
     duplicateStep: handleDuplicateStep,
     deleteStep: handleDeleteStep,
     addStep: handleAddStep,
     reorderSteps: handleReorderSteps,
-    resetState: resetBuilderState
-  } = useSequenceBuilderState(initialBuilderState);
+    resetState: resetBuilderState,
+    // contact enrollment moved to Sequence Status view
+  } = useSequenceBuilderState(blankBuilderState);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewOpen, setPreviewOpen] = useState(false);
   const [isDiscardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<'builder' | 'status'>('builder');
 
-  const baselinePayloadRef = useRef(buildPayloadFromState(initialBuilderState));
+  const baselinePayloadRef = useRef<SequenceUpdatePayload | null>(null);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    resetBuilderState(initialBuilderState);
+    const baseline = buildPayloadFromState(initialBuilderState);
+    baselinePayloadRef.current = baseline;
+    console.log('[SequenceEditor] hydrated initial builder state', initialBuilderState);
+  }, [initialBuilderState, isHydrated, resetBuilderState]);
 
   const isDirty = useMemo(() => {
+    if (!baselinePayloadRef.current) {
+      return false;
+    }
     const payload = buildPayloadFromState(builderState);
     return !arePayloadsEqual(payload, baselinePayloadRef.current);
   }, [builderState]);
 
   const handleSave = useCallback(async () => {
+    if (!isHydrated || !baselinePayloadRef.current) {
+      console.warn('[SequenceEditor] skipping save before hydration');
+      return;
+    }
     const payload = buildPayloadFromState(builderState);
+    console.log('[SequenceEditor] save payload', payload);
 
     if (!payload.name || payload.steps.length === 0) {
       toast({
@@ -88,6 +122,7 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
       });
 
       const data = await response.json().catch(() => ({}));
+      console.log('[SequenceEditor] save response', { ok: response.ok, data });
       if (!response.ok) {
         toast({
           title: 'Unable to save sequence',
@@ -119,7 +154,7 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
     } finally {
       setIsSaving(false);
     }
-  }, [builderState, resetBuilderState, router, sequenceId, toast]);
+  }, [baselinePayloadRef, builderState, isHydrated, resetBuilderState, router, sequenceId, toast]);
 
   const handleCancel = useCallback(() => {
     if (isDirty) {
@@ -140,6 +175,16 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
 
   const previewSteps = useMemo(() => builderState.steps, [builderState.steps]);
   const statusTabDisabled = !sequenceId;
+
+  if (!isHydrated || !baselinePayloadRef.current) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-background p-6 shadow-sm">
+        <div className="flex min-h-[200px] items-center justify-center text-sm text-muted-foreground">
+          Preparing sequence editor...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -186,11 +231,13 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
             state={builderState}
             onNameChange={handleNameChange}
             onSenderChange={handleSenderChange}
+            onMinGapMinutesChange={handleMinGapMinutesChange}
             onUpdateStep={handleUpdateStep}
             onDuplicateStep={handleDuplicateStep}
             onDeleteStep={handleDeleteStep}
             onAddStep={handleAddStep}
             onReorderSteps={handleReorderSteps}
+            onLaunchAtChange={handleLaunchAtChange}
             onSave={handleSave}
             onPreview={() => setPreviewOpen(true)}
             onCancel={handleCancel}

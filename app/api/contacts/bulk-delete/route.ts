@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 
-import { bulkDeleteContacts, getTeamForUser, getUser } from '@/lib/db/queries';
+import {
+  bulkDeleteContacts,
+  getTeamForUser,
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
+} from '@/lib/db/queries';
 import { contactBulkDeleteSchema } from '@/lib/validation/contact';
 
 export const runtime = 'nodejs';
 
 export async function DELETE(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -45,6 +49,14 @@ export async function DELETE(request: Request) {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     console.error('Failed to bulk delete contacts', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TeamDataWithMembers, User } from '@/lib/db/schema';
-import { getTeamForUser, getUser } from '@/lib/db/queries';
+import { InactiveTrialError, getActiveUser, getTeamForUser, getUser } from '@/lib/db/queries';
 import { redirect } from 'next/navigation';
 
 export type ActionState = {
@@ -34,12 +34,30 @@ type ValidatedActionWithUserFunction<S extends z.ZodType<any, any>, T> = (
   user: User
 ) => Promise<T>;
 
+type ValidatedActionOptions = {
+  requireActive?: boolean;
+};
+
 export function validatedActionWithUser<S extends z.ZodType<any, any>, T>(
   schema: S,
-  action: ValidatedActionWithUserFunction<S, T>
+  action: ValidatedActionWithUserFunction<S, T>,
+  options?: ValidatedActionOptions
 ) {
   return async (prevState: ActionState, formData: FormData) => {
-    const user = await getUser();
+    const requireActive = options?.requireActive ?? false;
+
+    let user: User | null;
+
+    try {
+      user = requireActive ? await getActiveUser() : await getUser();
+    } catch (error) {
+      if (error instanceof InactiveTrialError) {
+        return { error: error.message };
+      }
+
+      throw error;
+    }
+
     if (!user) {
       throw new Error('User is not authenticated');
     }
@@ -53,14 +71,24 @@ export function validatedActionWithUser<S extends z.ZodType<any, any>, T>(
   };
 }
 
-type ActionWithTeamFunction<T> = (
-  formData: FormData,
-  team: TeamDataWithMembers
-) => Promise<T>;
+type ActionWithTeamFunction<T> = (formData: FormData, team: TeamDataWithMembers) => Promise<T>;
 
-export function withTeam<T>(action: ActionWithTeamFunction<T>) {
+type TeamActionOptions = {
+  requireActive?: boolean;
+};
+
+export function withTeam<T>(action: ActionWithTeamFunction<T>, options?: TeamActionOptions) {
   return async (formData: FormData): Promise<T> => {
-    const user = await getUser();
+    const requireActive = options?.requireActive ?? true;
+
+    let user: User | null;
+
+    try {
+      user = requireActive ? await getActiveUser() : await getUser();
+    } catch (error) {
+      throw error;
+    }
+
     if (!user) {
       redirect('/sign-in');
     }

@@ -3,17 +3,10 @@
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { ContactUpload } from './contact-upload';
 import { ContactFormModal } from './contact-form-modal';
-import type { UploadSummary } from './types';
+import { ContactCustomFieldsManager } from './contact-custom-fields-manager';
+import { ContactsImportModal } from './contacts-import-modal';
 
 type ContactActionsProps = {
   disabled?: boolean;
@@ -22,28 +15,13 @@ type ContactActionsProps = {
 export function ContactActions({ disabled = false }: ContactActionsProps) {
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [isImportOpen, setImportOpen] = useState(false);
+  const [isCustomFieldsOpen, setCustomFieldsOpen] = useState(false);
   const { toast } = useToast();
 
   const handleCreateSuccess = (message: string) => {
     toast({
       title: 'Contact created',
       description: message
-    });
-  };
-
-  const handleUploadSuccess = (summary: UploadSummary) => {
-    toast({
-      title: 'Contacts uploaded successfully',
-      description: `${summary.inserted} added, ${summary.duplicates} skipped as duplicates`
-    });
-    setImportOpen(false);
-  };
-
-  const handleUploadError = (message: string) => {
-    toast({
-      title: 'Upload failed',
-      description: message,
-      variant: 'destructive'
     });
   };
 
@@ -60,6 +38,13 @@ export function ContactActions({ disabled = false }: ContactActionsProps) {
         >
           Import contacts
         </Button>
+        <Button
+          variant="ghost"
+          onClick={() => setCustomFieldsOpen(true)}
+          disabled={disabled}
+        >
+          Manage custom fields
+        </Button>
       </div>
 
       <ContactFormModal
@@ -67,24 +52,8 @@ export function ContactActions({ disabled = false }: ContactActionsProps) {
         onOpenChange={setCreateOpen}
         onSuccess={handleCreateSuccess}
       />
-
-      <Dialog open={isImportOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="max-w-2xl p-0">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>Import contacts</DialogTitle>
-            <DialogDescription>
-              Upload a CSV file to add multiple contacts at once.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="px-6 pb-6">
-            <ContactUpload
-              onSuccess={handleUploadSuccess}
-              onError={handleUploadError}
-              onFinished={() => setImportOpen(false)}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ContactCustomFieldsManager open={isCustomFieldsOpen} onOpenChange={setCustomFieldsOpen} />
+      <ContactsImportModal open={isImportOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

@@ -1,11 +1,27 @@
 import { NextResponse } from 'next/server';
 
-import { getSendersForTeam, getTeamForUser, getUser } from '@/lib/db/queries';
+import {
+  getSendersForTeam,
+  getTeamForUser,
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
+} from '@/lib/db/queries';
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    await getActiveUser();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
+    throw error;
   }
 
   const team = await getTeamForUser();
@@ -25,12 +41,17 @@ export async function GET() {
       email: sender.email,
       host: sender.host,
       port: sender.port,
+      smtpSecurity: sender.smtpSecurity,
       username: sender.username,
       status: sender.status,
       createdAt: sender.createdAt,
       bounceRate: sender.bounceRate,
       quotaUsed: sender.quotaUsed,
-      quotaLimit: sender.quotaLimit
+      quotaLimit: sender.quotaLimit,
+      inboundHost: sender.inboundHost,
+      inboundPort: sender.inboundPort,
+      inboundSecurity: sender.inboundSecurity,
+      inboundProtocol: sender.inboundProtocol
     }))
   });
 }

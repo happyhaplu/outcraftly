@@ -1,0 +1,2 @@
+-- Legacy placeholder migration required by _journal.json
+-- No schema changes; file ensures drizzle-kit respects historical migration IDs.

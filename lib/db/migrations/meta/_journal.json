@@ -85,6 +85,111 @@
       "when": 1761028153000,
       "tag": "manual_0018_sequence_sender_assignment",
       "breakpoints": false
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1766515200000,
+      "tag": "0019_add_sequence_draft_status",
+      "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1766601600000,
+      "tag": "0020_add_sequence_launch_at",
+      "breakpoints": false
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1766688000000,
+      "tag": "2025-10-24-0001-add-sequence-draft",
+      "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1766774400000,
+      "tag": "2025-10-24-0002-sequence-wizard-fields",
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1766860800000,
+      "tag": "2025-10-25-0001-delivery-logs-skipped",
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1766947200000,
+      "tag": "2025-10-26-0001-delivery-logs-delayed",
+      "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1766948100000,
+      "tag": "2025-10-26-0002-sequences-min-gap",
+      "breakpoints": false
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1766952000000,
+      "tag": "2025-10-26-0003-sequence-advanced-timezone",
+      "breakpoints": false
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1767033600000,
+      "tag": "2025-10-27-0001-users-role-admin",
+      "breakpoints": false
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1767037200000,
+      "tag": "2025-10-27-0002-users-account-metadata",
+      "breakpoints": false
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1767129600000,
+      "tag": "2025-10-28-0001-plan-usage",
+      "breakpoints": false
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1767133200000,
+      "tag": "2025-10-28-0002-plans-table",
+      "breakpoints": false
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1767219600000,
+      "tag": "2025-10-29-0001-team-payment-status",
+      "breakpoints": false
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1767398400000,
+      "tag": "2025-11-01-0001-contact-custom-fields",
+      "breakpoints": false
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1767484800000,
+      "tag": "2025-11-02-0001-contacts-job-title",
+      "breakpoints": false
     }
   ]
 }

@@ -3,16 +3,19 @@ import { inArray, eq, and } from 'drizzle-orm';
 
 import { db } from '@/lib/db/drizzle';
 import { contacts } from '@/lib/db/schema';
-import { getTeamForUser, getUser } from '@/lib/db/queries';
+import {
+  getTeamForUser,
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE
+} from '@/lib/db/queries';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -56,6 +59,14 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
     console.error('Failed to check duplicate contacts', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

@@ -1,10 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const enrollContactsMock = vi.fn();
 
 let SequenceEnrollmentErrorRef: typeof import('@/lib/db/queries').SequenceEnrollmentError;
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
 
 type PostRoute = (request: Request) => Promise<Response>;
 let POST: PostRoute;
@@ -13,7 +15,7 @@ vi.mock('@/lib/db/queries', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db/queries')>('@/lib/db/queries');
   return {
     ...actual,
-    getUser: getUserMock,
+    getActiveUser: getActiveUserMock,
     getTeamForUser: getTeamForUserMock,
     enrollContactsInSequence: enrollContactsMock
   };
@@ -21,12 +23,16 @@ vi.mock('@/lib/db/queries', async () => {
 
 beforeAll(async () => {
   ({ POST } = await import('@/app/api/sequences/enroll/route'));
-  ({ SequenceEnrollmentError: SequenceEnrollmentErrorRef } = await import('@/lib/db/queries'));
+  ({
+    SequenceEnrollmentError: SequenceEnrollmentErrorRef,
+    UnauthorizedError: UnauthorizedErrorRef,
+    InactiveTrialError: InactiveTrialErrorRef
+  } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getUserMock.mockResolvedValue({ id: 10 });
+  getActiveUserMock.mockResolvedValue({ id: 10 });
   getTeamForUserMock.mockResolvedValue({ id: 55 });
   enrollContactsMock.mockResolvedValue({ enrolled: 2, skipped: 1 });
 });
@@ -107,7 +113,7 @@ describe('POST /api/sequences/enroll', () => {
   });
 
   it('rejects unauthenticated requests', async () => {
-    getUserMock.mockResolvedValueOnce(null);
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
 
     const request = new Request('http://localhost/api/sequences/enroll', {
       method: 'POST',
@@ -198,6 +204,26 @@ describe('POST /api/sequences/enroll', () => {
     expect(payload.code).toBe('sequence_paused');
   });
 
+  it('returns conflict when sequence is still a draft', async () => {
+    enrollContactsMock.mockRejectedValueOnce(
+      new SequenceEnrollmentErrorRef('sequence_draft', 'Sequence is still a draft and cannot accept enrollments')
+    );
+
+    const request = new Request('http://localhost/api/sequences/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sequenceId: '11111111-2222-3333-4444-555555555555',
+        contactIds: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload.code).toBe('sequence_draft');
+  });
+
   it('handles invalid JSON payloads', async () => {
     const request = new Request('http://localhost/api/sequences/enroll', {
       method: 'POST',
@@ -207,5 +233,21 @@ describe('POST /api/sequences/enroll', () => {
 
     const response = await POST(request);
     expect(response.status).toBe(400);
+  });
+
+  it('returns 403 when the account trial is inactive', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const request = new Request('http://localhost/api/sequences/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sequenceId: '11111111-2222-3333-4444-555555555555',
+        contactIds: ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']
+      })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
   });
 });

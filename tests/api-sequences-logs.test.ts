@@ -1,8 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getUserMock = vi.fn();
+const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const listLogsMock = vi.fn();
+
+let UnauthorizedErrorRef: typeof import('@/lib/db/queries').UnauthorizedError;
+let InactiveTrialErrorRef: typeof import('@/lib/db/queries').InactiveTrialError;
 
 let sequenceRows: Array<{ id: string }>; // updated per test run
 
@@ -17,11 +20,15 @@ const createSelectBuilder = () => {
   return builder;
 };
 
-vi.mock('@/lib/db/queries', () => ({
-  getUser: getUserMock,
-  getTeamForUser: getTeamForUserMock,
-  listSequenceDeliveryLogsForTeam: listLogsMock
-}));
+vi.mock('@/lib/db/queries', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/db/queries')>('@/lib/db/queries');
+  return {
+    ...actual,
+    getActiveUser: getActiveUserMock,
+    getTeamForUser: getTeamForUserMock,
+    listSequenceDeliveryLogsForTeam: listLogsMock
+  };
+});
 
 vi.mock('@/lib/db/drizzle', () => ({
   db: {
@@ -33,12 +40,13 @@ let GET: (request: Request, context: { params: { id: string } }) => Promise<Resp
 
 beforeAll(async () => {
   ({ GET } = await import('@/app/api/sequences/logs/[id]/route'));
+  ({ UnauthorizedError: UnauthorizedErrorRef, InactiveTrialError: InactiveTrialErrorRef } = await import('@/lib/db/queries'));
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
   sequenceRows = [{ id: '11111111-2222-3333-4444-555555555555' }];
-  getUserMock.mockResolvedValue({ id: 7 });
+  getActiveUserMock.mockResolvedValue({ id: 7 });
   getTeamForUserMock.mockResolvedValue({ id: 42 });
   listLogsMock.mockResolvedValue({
     logs: [
@@ -49,6 +57,11 @@ beforeEach(() => {
         createdAt: new Date('2025-10-18T10:00:00.000Z'),
         messageId: 'msg-1',
         errorMessage: null,
+        skipReason: null,
+        rescheduledFor: null,
+        delayReason: null,
+        delayMs: null,
+        minIntervalMinutes: null,
         contact: {
           id: 'contact-1',
           firstName: 'Ada',
@@ -99,14 +112,72 @@ describe('GET /api/sequences/logs/:id', () => {
       status: 'sent',
       attempts: 1,
       messageId: 'msg-1',
+      skipReason: null,
+      rescheduledFor: null,
+      delayReason: null,
+      delayMs: null,
+      minIntervalMinutes: null,
       contact: {
         email: 'ada@example.com'
       }
     });
   });
 
+  it('includes delay metadata for delayed logs', async () => {
+    listLogsMock.mockResolvedValueOnce({
+      logs: [
+        {
+          id: 'log-delayed',
+          status: 'delayed',
+          attempts: 2,
+          createdAt: new Date('2025-10-18T11:00:00.000Z'),
+          messageId: null,
+          errorMessage: null,
+          skipReason: null,
+          rescheduledFor: null,
+          delayReason: 'delayed_due_to_min_gap',
+          delayMs: 300000,
+          minIntervalMinutes: 5,
+          contact: {
+            id: 'contact-delay',
+            firstName: 'Alan',
+            lastName: 'Turing',
+            email: 'alan@example.com'
+          },
+          step: null
+        }
+      ],
+      total: 1
+    });
+
+    const response = await GET(
+      new Request('http://localhost/api/sequences/logs/11111111-2222-3333-4444-555555555555?status=delayed'),
+      { params: { id: '11111111-2222-3333-4444-555555555555' } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(listLogsMock).toHaveBeenCalledWith(42, '11111111-2222-3333-4444-555555555555', {
+      status: 'delayed',
+      contact: undefined,
+      from: undefined,
+      to: undefined,
+      page: 1,
+      pageSize: 20
+    });
+
+    const payload = await response.json();
+    expect(payload.logs).toHaveLength(1);
+    expect(payload.logs[0]).toMatchObject({
+      id: 'log-delayed',
+      status: 'delayed',
+      delayReason: 'delayed_due_to_min_gap',
+      delayMs: 300000,
+      minIntervalMinutes: 5
+    });
+  });
+
   it('rejects unauthenticated requests', async () => {
-    getUserMock.mockResolvedValueOnce(null);
+    getActiveUserMock.mockRejectedValueOnce(new UnauthorizedErrorRef());
 
     const response = await GET(
       new Request('http://localhost/api/sequences/logs/11111111-2222-3333-4444-555555555555'),
@@ -126,6 +197,17 @@ describe('GET /api/sequences/logs/:id', () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it('rejects inactive trial accounts', async () => {
+    getActiveUserMock.mockRejectedValueOnce(new InactiveTrialErrorRef());
+
+    const response = await GET(
+      new Request('http://localhost/api/sequences/logs/11111111-2222-3333-4444-555555555555'),
+      { params: { id: '11111111-2222-3333-4444-555555555555' } }
+    );
+
+    expect(response.status).toBe(403);
   });
 
   it('returns 404 when the sequence is not found', async () => {

@@ -1,22 +1,40 @@
 // @ts-ignore: no declaration file for 'luxon' in this project
 import { DateTime } from 'luxon';
 
-export type SchedulingMode = 'fixed' | 'window';
-
-export type FixedScheduleOptions = {
-  mode: 'fixed';
-  sendTime: string; // HH:mm
-  respectContactTimezone: boolean;
+export type SendWindow = {
+  start: string;
+  end: string;
 };
 
-export type WindowScheduleOptions = {
+export type SchedulingMode = 'immediate' | 'fixed' | 'window';
+
+type BaseScheduleOptions = {
+  mode: SchedulingMode;
+  respectContactTimezone: boolean;
+  timezone?: string | null;
+  sendDays?: string[] | null;
+  sendWindows?: SendWindow[] | null;
+};
+
+export type ImmediateScheduleOptions = BaseScheduleOptions & {
+  mode: 'immediate';
+};
+
+export type FixedScheduleOptions = BaseScheduleOptions & {
+  mode: 'fixed';
+  sendTime: string; // HH:mm
+};
+
+export type WindowScheduleOptions = BaseScheduleOptions & {
   mode: 'window';
   sendWindowStart: string; // HH:mm
   sendWindowEnd: string; // HH:mm
-  respectContactTimezone: boolean;
 };
 
-export type SequenceScheduleOptions = FixedScheduleOptions | WindowScheduleOptions;
+export type SequenceScheduleOptions =
+  | ImmediateScheduleOptions
+  | FixedScheduleOptions
+  | WindowScheduleOptions;
 
 export type ScheduleComputationInput = {
   now: Date;
@@ -29,6 +47,22 @@ export type ScheduleComputationInput = {
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_ZONE = 'UTC';
+const MAX_LOOKAHEAD_DAYS = 14;
+
+const DAY_LABELS: Record<string, number> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7
+};
+
+type ParsedWindow = {
+  startMinutes: number;
+  endMinutes: number;
+};
 
 function isValidTimezone(zone: string | null | undefined): zone is string {
   if (!zone) {
@@ -50,7 +84,7 @@ export function parseTimeLabel(value: string): { hour: number; minute: number } 
   return { hour, minute };
 }
 
-function resolveZone(preferred: string | null | undefined, fallback: string): string {
+function resolveZone(preferred: string | null | undefined, fallback: string | null | undefined): string {
   if (isValidTimezone(preferred)) {
     return preferred;
   }
@@ -64,94 +98,229 @@ function applyStepDelay(now: Date, stepDelayHours: number): DateTime {
   return DateTime.fromJSDate(now, { zone: 'utc' }).plus({ hours: stepDelayHours });
 }
 
-function computeFixedSchedule(
-  base: DateTime,
-  zone: string,
-  sendTime: string
-): DateTime {
-  const { hour, minute } = parseTimeLabel(sendTime);
-  let target = base.setZone(zone).set({ hour, minute, second: 0, millisecond: 0 });
-
-  if (target < base.setZone(zone)) {
-    target = target.plus({ days: 1 });
+function normaliseDays(days?: string[] | null): number[] {
+  if (!Array.isArray(days)) {
+    return [];
   }
-
-  return target.toUTC();
+  const seen = new Set<number>();
+  const allowed: number[] = [];
+  for (const raw of days) {
+    if (typeof raw !== 'string') {
+      continue;
+    }
+    const key = raw.trim().slice(0, 3);
+    const upper = key.charAt(0).toUpperCase() + key.slice(1).toLowerCase();
+    const code = DAY_LABELS[upper as keyof typeof DAY_LABELS];
+    if (code && !seen.has(code)) {
+      seen.add(code);
+      allowed.push(code);
+    }
+  }
+  return allowed;
 }
 
-function computeWindowSchedule(
-  base: DateTime,
-  zone: string,
-  sendWindowStart: string,
-  sendWindowEnd: string,
-  random: () => number
-): DateTime {
-  const { hour: startHour, minute: startMinute } = parseTimeLabel(sendWindowStart);
-  const { hour: endHour, minute: endMinute } = parseTimeLabel(sendWindowEnd);
+function normaliseWindows(windows?: SendWindow[] | null): ParsedWindow[] {
+  if (!Array.isArray(windows)) {
+    return [];
+  }
 
-  let start = base.setZone(zone).set({ hour: startHour, minute: startMinute, second: 0, millisecond: 0 });
-  let end = base.setZone(zone).set({ hour: endHour, minute: endMinute, second: 0, millisecond: 0 });
-
-  if (end <= start) {
-    // window wraps or invalid; treat as next-day end
-    end = end.plus({ days: 1 });
-    if (end <= start) {
-      throw new Error('End of window must be after start time');
+  const result: ParsedWindow[] = [];
+  for (const window of windows) {
+    if (!window || typeof window.start !== 'string' || typeof window.end !== 'string') {
+      continue;
+    }
+    try {
+      const start = parseTimeLabel(window.start);
+      const end = parseTimeLabel(window.end);
+      const startMinutes = start.hour * 60 + start.minute;
+      const endMinutes = end.hour * 60 + end.minute;
+      if (endMinutes <= startMinutes) {
+        continue;
+      }
+      result.push({ startMinutes, endMinutes });
+    } catch (error) {
+      // Skip invalid window definitions.
     }
   }
 
-  const localBase = base.setZone(zone);
+  result.sort((a, b) => a.startMinutes - b.startMinutes);
+  return result;
+}
 
-  if (localBase > end) {
-    const diffDays = Math.ceil(localBase.diff(end, 'days').days);
-    start = start.plus({ days: diffDays });
-    end = end.plus({ days: diffDays });
-  } else if (localBase > start && localBase < end) {
-    start = localBase;
-  } else if (localBase > start && localBase >= end) {
-    start = start.plus({ days: 1 });
-    end = end.plus({ days: 1 });
+function resolveWindowModeWindows(schedule: WindowScheduleOptions): ParsedWindow[] {
+  const fromOverrides = normaliseWindows(schedule.sendWindows);
+  if (fromOverrides.length > 0) {
+    return fromOverrides;
   }
 
-  const windowDuration = end.diff(start, 'milliseconds').milliseconds;
-  if (windowDuration <= 0) {
-    throw new Error('Scheduling window duration must be positive');
+  if (schedule.sendWindowStart && schedule.sendWindowEnd) {
+    const fallback = normaliseWindows([{ start: schedule.sendWindowStart, end: schedule.sendWindowEnd }]);
+    if (fallback.length > 0) {
+      return fallback;
+    }
   }
 
-  const clampRandom = Math.min(Math.max(random(), 0), 0.9999999999);
-  const scheduledLocal = start.plus({ milliseconds: windowDuration * clampRandom });
-  return scheduledLocal.toUTC();
+  return [{ startMinutes: 9 * 60, endMinutes: 17 * 60 }];
+}
+
+function resolveImmediateWindows(schedule: ImmediateScheduleOptions): ParsedWindow[] {
+  const overrides = normaliseWindows(schedule.sendWindows);
+  if (overrides.length > 0) {
+    return overrides;
+  }
+  return [{ startMinutes: 0, endMinutes: 24 * 60 }];
+}
+
+function computeFixedSchedule(
+  baseUtc: DateTime,
+  zone: string,
+  schedule: FixedScheduleOptions,
+  allowedWeekdays: number[]
+): DateTime {
+  const { hour, minute } = parseTimeLabel(schedule.sendTime);
+  const baseLocal = baseUtc.setZone(zone);
+  let candidate = baseLocal.set({ hour, minute, second: 0, millisecond: 0 });
+
+  if (candidate <= baseLocal) {
+    candidate = candidate.plus({ days: 1 });
+  }
+
+  let attempts = 0;
+  while (attempts < MAX_LOOKAHEAD_DAYS) {
+    if (allowedWeekdays.length === 0 || allowedWeekdays.includes(candidate.weekday)) {
+      return candidate.toUTC();
+    }
+    candidate = candidate.plus({ days: 1 });
+    attempts += 1;
+  }
+
+  return candidate.toUTC();
+}
+
+function computeWindowModeSchedule(
+  baseUtc: DateTime,
+  zone: string,
+  schedule: WindowScheduleOptions,
+  allowedWeekdays: number[],
+  random: () => number
+): DateTime {
+  const windows = resolveWindowModeWindows(schedule);
+  const baseLocal = baseUtc.setZone(zone);
+
+  for (let dayOffset = 0; dayOffset < MAX_LOOKAHEAD_DAYS; dayOffset += 1) {
+    const dayStart = baseLocal.plus({ days: dayOffset }).startOf('day');
+    const isSameDay = dayOffset === 0;
+    if (allowedWeekdays.length > 0 && !allowedWeekdays.includes(dayStart.weekday)) {
+      continue;
+    }
+
+    for (const window of windows) {
+      const start = dayStart.plus({ minutes: window.startMinutes });
+      const end = dayStart.plus({ minutes: window.endMinutes });
+      if (end <= start) {
+        continue;
+      }
+
+      const effectiveStart = isSameDay && baseLocal > start ? baseLocal : start;
+      if (effectiveStart < end) {
+        const durationMs = end.diff(effectiveStart, 'milliseconds').milliseconds;
+        const clampRandom = Math.min(Math.max(random(), 0), 0.9999999999);
+        const scheduledLocal = effectiveStart.plus({ milliseconds: durationMs * clampRandom });
+        return scheduledLocal.toUTC();
+      }
+    }
+  }
+
+  const fallbackWindow = windows[0] ?? { startMinutes: 9 * 60, endMinutes: 17 * 60 };
+  const fallbackDay = baseLocal.plus({ days: 1 }).startOf('day');
+  return fallbackDay.plus({ minutes: fallbackWindow.startMinutes }).toUTC();
+}
+
+function computeImmediateSchedule(
+  baseUtc: DateTime,
+  zone: string,
+  schedule: ImmediateScheduleOptions,
+  allowedWeekdays: number[]
+): DateTime {
+  const windows = resolveImmediateWindows(schedule);
+  const baseLocal = baseUtc.setZone(zone);
+
+  for (let dayOffset = 0; dayOffset < MAX_LOOKAHEAD_DAYS; dayOffset += 1) {
+    const dayStart = baseLocal.plus({ days: dayOffset }).startOf('day');
+    const isSameDay = dayOffset === 0;
+    if (allowedWeekdays.length > 0 && !allowedWeekdays.includes(dayStart.weekday)) {
+      continue;
+    }
+
+    for (const window of windows) {
+      const start = dayStart.plus({ minutes: window.startMinutes });
+      const end = dayStart.plus({ minutes: window.endMinutes });
+      if (end <= start) {
+        continue;
+      }
+
+      const candidate = isSameDay && baseLocal > start ? baseLocal : start;
+      if (candidate < end) {
+        return candidate.toUTC();
+      }
+    }
+  }
+
+  return baseLocal.plus({ days: 1 }).toUTC();
 }
 
 export function computeScheduledUtc(input: ScheduleComputationInput): Date {
   const { now, stepDelayHours, contactTimezone, fallbackTimezone, schedule } = input;
   const random = input.random ?? Math.random;
 
-  const base = applyStepDelay(now, stepDelayHours);
+  const baseUtc = applyStepDelay(now, stepDelayHours);
+  const fallbackZone = schedule.timezone ?? fallbackTimezone ?? DEFAULT_ZONE;
   const zone = schedule.respectContactTimezone
-    ? resolveZone(contactTimezone, fallbackTimezone)
-    : resolveZone(null, fallbackTimezone);
+    ? resolveZone(contactTimezone, fallbackZone)
+    : resolveZone(schedule.timezone, fallbackTimezone);
+
+  const allowedWeekdays = normaliseDays(schedule.sendDays);
 
   if (schedule.mode === 'fixed') {
-    const scheduled = computeFixedSchedule(base, zone, schedule.sendTime);
+    const scheduled = computeFixedSchedule(baseUtc, zone, schedule, allowedWeekdays);
     return scheduled.toJSDate();
   }
 
-  const scheduled = computeWindowSchedule(base, zone, schedule.sendWindowStart, schedule.sendWindowEnd, random);
+  if (schedule.mode === 'window') {
+    const scheduled = computeWindowModeSchedule(baseUtc, zone, schedule, allowedWeekdays, random);
+    return scheduled.toJSDate();
+  }
+
+  const scheduled = computeImmediateSchedule(baseUtc, zone, schedule, allowedWeekdays);
   return scheduled.toJSDate();
 }
 
-export function formatTimeRangePreview(schedule: SequenceScheduleOptions, zone: string): string {
-  const validZone = resolveZone(zone, DEFAULT_ZONE);
+export function formatTimeRangePreview(schedule: SequenceScheduleOptions, fallbackZone: string): string {
+  const zone = resolveZone(schedule.timezone, fallbackZone);
+
   if (schedule.mode === 'fixed') {
     const { hour, minute } = parseTimeLabel(schedule.sendTime);
-    const sample = DateTime.now().setZone(validZone).set({ hour, minute });
+    const sample = DateTime.now().setZone(zone).set({ hour, minute, second: 0, millisecond: 0 });
     return sample.toFormat('h:mm a');
   }
 
-  const start = DateTime.now().setZone(validZone).set(parseTimeLabel(schedule.sendWindowStart));
-  const end = DateTime.now().setZone(validZone).set(parseTimeLabel(schedule.sendWindowEnd));
-  const startLabel = start.toFormat('h:mm a');
-  const endLabel = end.toFormat('h:mm a');
-  return `${startLabel} – ${endLabel}`;
+  if (schedule.mode === 'window') {
+    const windows = resolveWindowModeWindows(schedule);
+    const first = windows[0];
+    if (!first) {
+      return 'Daily window';
+    }
+    const start = DateTime.now().setZone(zone).startOf('day').plus({ minutes: first.startMinutes });
+    const end = DateTime.now().setZone(zone).startOf('day').plus({ minutes: first.endMinutes });
+    return `${start.toFormat('h:mm a')} – ${end.toFormat('h:mm a')}`;
+  }
+
+  const windows = resolveImmediateWindows(schedule);
+  const first = windows[0];
+  if (!first || (first.startMinutes === 0 && first.endMinutes === 24 * 60)) {
+    return 'Any time';
+  }
+  const start = DateTime.now().setZone(zone).startOf('day').plus({ minutes: first.startMinutes });
+  const end = DateTime.now().setZone(zone).startOf('day').plus({ minutes: first.endMinutes });
+  return `${start.toFormat('h:mm a')} – ${end.toFormat('h:mm a')}`;
 }

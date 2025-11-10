@@ -1,9 +1,18 @@
 import nodemailer from 'nodemailer';
 
-import { SUPPORTED_PERSONALISATION_TOKENS, type PersonalisationToken } from '@/lib/validation/sequence';
+import { renderTemplate, type ContactRecord } from '@/lib/sequence/sequence-engine';
 
-export type PersonalisationContext = Partial<Record<PersonalisationToken, string | null | undefined>> & {
+export type SequencePersonalisationInput = {
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  company?: string | null;
+  jobTitle?: string | null;
+  phone?: string | null;
+  tags?: string[] | null;
+  customFieldsById?: Record<string, string | null | undefined> | null;
+  customFieldsByKey?: Record<string, string | null | undefined> | null;
+  customFieldsByName?: Record<string, string | null | undefined> | null;
 };
 
 export type RenderedSequenceContent = {
@@ -12,28 +21,59 @@ export type RenderedSequenceContent = {
   html: string;
 };
 
-export function renderSequenceContent(subject: string, body: string, context: PersonalisationContext): RenderedSequenceContent {
-  const replacements: Record<string, string> = {
-    email: context.email ?? '',
-    firstName: context.firstName ?? '',
-    lastName: context.lastName ?? '',
-    company: context.company ?? '',
-    title: context.title ?? '',
-    phone: context.phone ?? ''
+export function renderSequenceContent(
+  subject: string,
+  body: string,
+  contact: SequencePersonalisationInput,
+  options: { emptyPlaceholder?: string } = {}
+): RenderedSequenceContent {
+  const emptyPlaceholder = options.emptyPlaceholder ?? '';
+
+  const customFields: Record<string, string> = {};
+  const customNames: Record<string, string> = {};
+
+  const addEntry = (target: Record<string, string>, key: string, value: string | null | undefined) => {
+    if (value == null) {
+      return;
+    }
+    target[key] = String(value);
   };
 
-  const render = (input: string) =>
-    input.replace(/\{\{\s*([a-zA-Z0-9]+)\s*\}\}/g, (match, token) => {
-      const key = String(token);
-      if (SUPPORTED_PERSONALISATION_TOKENS.includes(key as PersonalisationToken)) {
-        const value = replacements[key];
-        return value && value.length > 0 ? value : '';
-      }
-      return match;
-    });
+  const byId = contact.customFieldsById ?? null;
+  if (byId) {
+    for (const [key, value] of Object.entries(byId)) {
+      addEntry(customFields, key, value);
+    }
+  }
 
-  const renderedSubject = render(subject ?? '');
-  const renderedBody = render(body ?? '');
+  const byKey = contact.customFieldsByKey ?? null;
+  if (byKey) {
+    for (const [key, value] of Object.entries(byKey)) {
+      addEntry(customFields, key, value);
+    }
+  }
+
+  const byName = contact.customFieldsByName ?? null;
+  if (byName) {
+    for (const [key, value] of Object.entries(byName)) {
+      addEntry(customNames, key, value);
+    }
+  }
+
+  const record: ContactRecord = {
+    email: contact.email,
+    firstName: contact.firstName ?? undefined,
+    lastName: contact.lastName ?? undefined,
+    company: contact.company ?? undefined,
+    jobTitle: contact.jobTitle ?? undefined,
+    phone: contact.phone ?? undefined,
+    customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+    customFieldsByName: Object.keys(customNames).length > 0 ? customNames : undefined,
+    tags: contact.tags ?? undefined
+  };
+
+  const renderedSubject = renderTemplate(subject ?? '', record, { emptyPlaceholder });
+  const renderedBody = renderTemplate(body ?? '', record, { emptyPlaceholder });
 
   return {
     subject: renderedSubject,

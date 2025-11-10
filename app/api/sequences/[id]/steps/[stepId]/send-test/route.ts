@@ -3,27 +3,26 @@ import { NextResponse } from 'next/server';
 import {
   getSequenceStepForTeam,
   getTeamForUser,
-  getUser
+  getActiveUser,
+  InactiveTrialError,
+  UnauthorizedError,
+  TRIAL_EXPIRED_ERROR_MESSAGE,
+  assertCanSendEmails,
+  trackEmailsSent,
+  PlanLimitExceededError
 } from '@/lib/db/queries';
 import { dispatchSequenceEmail, renderSequenceContent } from '@/lib/mail/sequence-mailer';
-import { decryptSecret } from '@/lib/security/encryption';
+import { decryptSecret, isProbablyEncryptedSecret } from '@/lib/security/encryption';
 import { sequenceIdSchema, sequenceStepIdSchema, sequenceTestEmailSchema } from '@/lib/validation/sequence';
 
 export const runtime = 'nodejs';
 
-type RouteContext = {
-  params?: Promise<{ id?: string; stepId?: string }> | { id?: string; stepId?: string };
-};
-
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: Request, context: any) {
   const rawParams = (await context?.params) ?? {};
   const params = rawParams as { id?: string; stepId?: string };
 
   try {
-    const user = await getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await getActiveUser();
 
     const team = await getTeamForUser();
     if (!team) {
@@ -85,6 +84,10 @@ export async function POST(request: Request, context: RouteContext) {
       }
 
       try {
+        if (!isProbablyEncryptedSecret(raw)) {
+          return raw;
+        }
+
         return decryptSecret(raw);
       } catch (error) {
         console.warn('Failed to decrypt sender password, falling back to stored value', error instanceof Error ? error.message : error);
@@ -130,13 +133,17 @@ export async function POST(request: Request, context: RouteContext) {
     const lastName = rest.join(' ');
 
     const rendered = renderSequenceContent(step.subject ?? '', step.body ?? '', {
+      email: recipientEmail,
       firstName: firstName || 'Test',
       lastName: lastName || (firstName ? '' : 'Recipient'),
       company: team.name ?? 'Test Company',
-      email: recipientEmail,
-      title: null,
-      phone: null
+      tags: [],
+      customFieldsById: {},
+      customFieldsByKey: {},
+      customFieldsByName: {}
     });
+
+    await assertCanSendEmails(team.id, 1);
 
     let deliveryResult: Awaited<ReturnType<typeof dispatchSequenceEmail>> | undefined;
 
@@ -210,6 +217,8 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Unable to send test email.' }, { status: 502 });
     }
 
+    await trackEmailsSent(team.id, 1);
+
     return NextResponse.json({
       message: 'Test email sent',
       recipient: recipientEmail,
@@ -226,6 +235,26 @@ export async function POST(request: Request, context: RouteContext) {
       }
     });
   } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (error instanceof InactiveTrialError) {
+      return NextResponse.json({ error: TRIAL_EXPIRED_ERROR_MESSAGE }, { status: 403 });
+    }
+
+    if (error instanceof PlanLimitExceededError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          resource: error.resource,
+          limit: error.limit,
+          remaining: error.remaining
+        },
+        { status: 403 }
+      );
+    }
+
     console.error('Failed to send sequence step test email', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

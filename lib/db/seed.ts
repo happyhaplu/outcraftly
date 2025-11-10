@@ -1,8 +1,100 @@
 import { stripe } from '../payments/stripe';
 import { db } from './drizzle';
-import { users, teams, teamMembers, senders, contacts } from './schema';
+import { users, teams, teamMembers, senders, contacts, plans } from './schema';
 import { hashPassword } from '@/lib/auth/session';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
+import { DEFAULT_PLAN_DEFINITIONS } from '@/lib/config/plans';
+
+async function ensurePlansTable() {
+  console.log('Ensuring plans table exists...');
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS plans (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL UNIQUE,
+      max_emails_per_month INTEGER NOT NULL,
+      max_prospects INTEGER NOT NULL,
+      max_credits INTEGER NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      is_trial BOOLEAN NOT NULL DEFAULT FALSE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS plans_name_idx ON plans(name)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS plans_active_idx ON plans(is_active)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS plans_trial_idx ON plans(is_trial)`);
+}
+
+async function ensureTeamPaymentStatusColumn() {
+  console.log('Ensuring team payment status column exists...');
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'payment_status'
+      ) THEN
+        CREATE TYPE payment_status AS ENUM ('trial', 'unpaid', 'paid');
+      END IF;
+    END;
+    $$;
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS teams
+    ADD COLUMN IF NOT EXISTS payment_status payment_status NOT NULL DEFAULT 'unpaid'
+  `);
+}
+
+async function ensureSenderMailColumns() {
+  console.log('Ensuring sender SMTP and inbound columns exist...');
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sender_security') THEN
+        CREATE TYPE sender_security AS ENUM ('SSL/TLS', 'STARTTLS', 'None');
+      END IF;
+    END;
+    $$;
+  `);
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inbound_protocol') THEN
+        CREATE TYPE inbound_protocol AS ENUM ('IMAP', 'POP3');
+      END IF;
+    END;
+    $$;
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE IF EXISTS senders
+      ADD COLUMN IF NOT EXISTS smtp_security sender_security,
+      ADD COLUMN IF NOT EXISTS inbound_host varchar(255),
+      ADD COLUMN IF NOT EXISTS inbound_port integer,
+      ADD COLUMN IF NOT EXISTS inbound_security sender_security,
+      ADD COLUMN IF NOT EXISTS inbound_protocol inbound_protocol;
+  `);
+
+  await db.execute(sql`
+    UPDATE senders
+    SET smtp_security = 'SSL/TLS'
+    WHERE smtp_security IS NULL;
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE senders
+      ALTER COLUMN smtp_security SET DEFAULT 'SSL/TLS',
+      ALTER COLUMN smtp_security SET NOT NULL;
+  `);
+}
 
 async function createStripeProducts() {
   console.log('Creating Stripe products and prices...');
@@ -41,6 +133,36 @@ async function createStripeProducts() {
 }
 
 async function seed() {
+  await ensureTeamPaymentStatusColumn();
+  await ensurePlansTable();
+  await ensureSenderMailColumns();
+  console.log('Ensuring default plans...');
+  for (const definition of DEFAULT_PLAN_DEFINITIONS) {
+    await db
+      .insert(plans)
+      .values({
+        name: definition.name,
+        maxEmailsPerMonth: definition.limits.emailsPerMonth,
+        maxProspects: definition.limits.prospects,
+        maxCredits: definition.limits.credits,
+        isActive: definition.isActive ?? true,
+        isTrial: definition.isTrial ?? false,
+        sortOrder: definition.sortOrder
+      })
+      .onConflictDoUpdate({
+        target: plans.name,
+        set: {
+          maxEmailsPerMonth: definition.limits.emailsPerMonth,
+          maxProspects: definition.limits.prospects,
+          maxCredits: definition.limits.credits,
+          isActive: definition.isActive ?? true,
+          isTrial: definition.isTrial ?? false,
+          sortOrder: definition.sortOrder,
+          updatedAt: new Date()
+        }
+      });
+  }
+
   const email = 'test@test.com';
   const password = 'admin123';
   const passwordHash = await hashPassword(password);
@@ -58,7 +180,11 @@ async function seed() {
       .values({
         email,
         passwordHash,
-        role: 'owner',
+        role: 'user',
+        signupDate: new Date(),
+        trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        plan: 'Starter',
+        status: 'active',
       })
       .returning()
       .then((rows) => rows[0]));
@@ -67,6 +193,53 @@ async function seed() {
     console.log('Initial user created.');
   } else {
     console.log('Seed user already exists. Skipping creation.');
+  }
+
+  const adminEmail = 'happy.outcraftly@zohomail.in';
+  const adminPassword = 'System@123321';
+
+  const existingAdmin = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, adminEmail))
+    .limit(1);
+
+  if (!existingAdmin[0]) {
+    const adminPasswordHash = await hashPassword(adminPassword);
+    await db.insert(users).values({
+      name: 'Outcraftly Admin',
+      email: adminEmail,
+      passwordHash: adminPasswordHash,
+      role: 'admin',
+      signupDate: new Date(),
+      trialExpiresAt: null,
+      plan: 'Scale Plus',
+      status: 'active',
+    });
+    console.log('Default admin account created.');
+  } else {
+    if (existingAdmin[0].role !== 'admin') {
+      await db
+        .update(users)
+        .set({
+          role: 'admin',
+          plan: 'Scale Plus',
+          status: 'active',
+          signupDate: existingAdmin[0].signupDate ?? new Date(),
+        })
+        .where(eq(users.id, existingAdmin[0].id));
+      console.log('Existing admin user role updated to admin.');
+    } else {
+      await db
+        .update(users)
+        .set({
+          plan: 'Scale Plus',
+          status: 'active',
+          signupDate: existingAdmin[0].signupDate ?? new Date(),
+        })
+        .where(eq(users.id, existingAdmin[0].id));
+      console.log('Default admin account already present.');
+    }
   }
 
   const existingTeam = await db
@@ -81,6 +254,7 @@ async function seed() {
       .insert(teams)
       .values({
         name: 'Test Team',
+        paymentStatus: 'paid'
       })
       .returning()
       .then((rows) => rows[0]));
@@ -108,6 +282,7 @@ async function seed() {
         email: 'sales@example.com',
         host: 'smtp.sales.example.com',
         port: 587,
+        smtpSecurity: 'SSL/TLS',
         username: 'sales-user',
         password: 'placeholder-secret',
         status: 'verified',
@@ -121,6 +296,7 @@ async function seed() {
         email: 'marketing@example.com',
         host: 'smtp.marketing.example.com',
         port: 465,
+        smtpSecurity: 'SSL/TLS',
         username: 'marketing-user',
         password: 'placeholder-secret',
         status: 'active',

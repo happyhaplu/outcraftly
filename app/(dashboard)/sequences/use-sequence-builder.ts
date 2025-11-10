@@ -15,14 +15,30 @@ export function useSequenceBuilderState(initialState: SequenceBuilderState) {
   const [state, setState] = useState<SequenceBuilderState>({
     ...initialState,
     senderId: initialState.senderId ?? null,
-    steps: withNormalisedOrder(initialState.steps)
+    launchAt: initialState.launchAt ?? null,
+    minGapMinutes:
+      typeof initialState.minGapMinutes === 'number' && Number.isFinite(initialState.minGapMinutes)
+        ? Math.max(0, Math.floor(initialState.minGapMinutes))
+        : null,
+    steps: withNormalisedOrder(initialState.steps),
+    contactIds: Array.isArray(initialState.contactIds)
+      ? Array.from(new Set(initialState.contactIds))
+      : []
   });
 
   const resetState = useCallback((next: SequenceBuilderState) => {
     setState({
       ...next,
       senderId: next.senderId ?? null,
-      steps: withNormalisedOrder(next.steps)
+      launchAt: next.launchAt ?? null,
+      minGapMinutes:
+        typeof next.minGapMinutes === 'number' && Number.isFinite(next.minGapMinutes)
+          ? Math.max(0, Math.floor(next.minGapMinutes))
+          : null,
+      steps: withNormalisedOrder(next.steps),
+      contactIds: Array.isArray(next.contactIds)
+        ? Array.from(new Set(next.contactIds))
+        : []
     });
   }, []);
 
@@ -42,6 +58,20 @@ export function useSequenceBuilderState(initialState: SequenceBuilderState) {
 
   const setSenderId = useCallback((senderId: number | null) => {
     setState((previous) => ({ ...previous, senderId }));
+  }, []);
+
+  const setLaunchAt = useCallback((launchAt: string | null) => {
+    setState((previous) => ({ ...previous, launchAt }));
+  }, []);
+
+  const setMinGapMinutes = useCallback((value: number | null) => {
+    setState((previous) => ({
+      ...previous,
+      minGapMinutes:
+        typeof value === 'number' && Number.isFinite(value)
+          ? Math.max(0, Math.floor(value))
+          : null
+    }));
   }, []);
 
   const updateStep = useCallback(
@@ -105,15 +135,38 @@ export function useSequenceBuilderState(initialState: SequenceBuilderState) {
     [updateSteps]
   );
 
+  const setContactIds = useCallback((contactIds: string[]) => {
+    setState((previous) => ({
+      ...previous,
+      contactIds: Array.from(new Set(contactIds))
+    }));
+  }, []);
+
+  const toggleContactId = useCallback((contactId: string) => {
+    setState((previous) => {
+      const next = new Set(previous.contactIds);
+      if (next.has(contactId)) {
+        next.delete(contactId);
+      } else {
+        next.add(contactId);
+      }
+      return { ...previous, contactIds: Array.from(next) };
+    });
+  }, []);
+
   return {
     state,
     setName,
     setSenderId,
+    setLaunchAt,
     updateStep,
     duplicateStep,
     deleteStep,
     addStep,
     reorderSteps,
-    resetState
+    resetState,
+    setMinGapMinutes,
+    setContactIds,
+    toggleContactId
   };
 }

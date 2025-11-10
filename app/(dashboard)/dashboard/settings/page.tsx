@@ -197,7 +197,11 @@ function InviteTeamMemberSkeleton() {
 
 function InviteTeamMember() {
   const { data: user } = useSWR<User>('/api/user', fetcher);
-  const isOwner = user?.role === 'owner';
+  const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
+  const currentMemberRole = teamData?.teamMembers?.find(
+    (member) => member.user.id === user?.id
+  )?.role;
+  const isOwner = currentMemberRole === 'owner';
   const [inviteState, inviteAction, isInvitePending] = useActionState<
     ActionState,
     FormData

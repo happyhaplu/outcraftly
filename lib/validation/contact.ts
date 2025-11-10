@@ -17,6 +17,12 @@ const baseContactSchema = {
     .string({ required_error: 'Company is required' })
     .trim()
     .min(1, 'Company is required'),
+  jobTitle: z
+    .string()
+    .trim()
+    .max(150, 'Job title must be 150 characters or fewer')
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   timezone: z
     .string()
     .trim()
@@ -35,6 +41,15 @@ const baseContactSchema = {
     }, 'Enter a valid timezone')
 };
 
+const contactCustomFieldsSchema = z
+  .record(
+    z.string().uuid('Custom field id must be a valid UUID'),
+    z.union([z.string(), z.number(), z.null()], {
+      invalid_type_error: 'Custom field values must be strings, numbers, or null'
+    })
+  )
+  .optional();
+
 export const contactFormSchema = z.object({
   ...baseContactSchema,
   tags: z
@@ -48,15 +63,19 @@ export const contactUpdateSchema = z
     firstName: baseContactSchema.firstName.optional(),
     lastName: baseContactSchema.lastName.optional(),
     company: baseContactSchema.company.optional(),
+    jobTitle: baseContactSchema.jobTitle.optional(),
     timezone: baseContactSchema.timezone.optional(),
-    tags: z.array(z.string()).optional()
+    tags: z.array(z.string()).optional(),
+    customFields: contactCustomFieldsSchema
   })
   .refine(
     (value) =>
       typeof value.firstName === 'string' ||
       typeof value.lastName === 'string' ||
       typeof value.company === 'string' ||
-      Array.isArray(value.tags),
+      typeof value.jobTitle === 'string' ||
+      Array.isArray(value.tags) ||
+      (value.customFields && Object.keys(value.customFields).length > 0),
     {
       message: 'At least one field must be provided',
       path: ['firstName']
@@ -65,7 +84,8 @@ export const contactUpdateSchema = z
 
 export const contactCreateSchema = z.object({
   ...baseContactSchema,
-  tags: z.array(z.string()).default([])
+  tags: z.array(z.string()).default([]),
+  customFields: contactCustomFieldsSchema
 });
 
 export const contactDeleteSchema = z.object({

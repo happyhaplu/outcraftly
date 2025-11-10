@@ -3,6 +3,24 @@ import crypto from 'crypto';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // AES-GCM recommended IV length
 const AUTH_TAG_LENGTH = 16;
+const MIN_ENCRYPTED_SECRET_BYTES = IV_LENGTH + AUTH_TAG_LENGTH + 1; // IV + tag + at least one byte of payload
+
+export function isProbablyEncryptedSecret(value: string): boolean {
+  if (!value || value.length < 16) {
+    return false;
+  }
+
+  if (!/^[A-Za-z0-9+/=]+$/.test(value)) {
+    return false;
+  }
+
+  try {
+    const decodedLength = Buffer.from(value, 'base64').length;
+    return decodedLength >= MIN_ENCRYPTED_SECRET_BYTES;
+  } catch {
+    return false;
+  }
+}
 
 function getKey() {
   const secret = process.env.SENDER_CREDENTIALS_KEY;

@@ -15,20 +15,35 @@ import { useSequenceLogs } from './use-sequence-logs';
 const STATUS_OPTIONS: Array<{ value: 'all' | DeliveryLogStatus; label: string }> = [
 	{ value: 'all', label: 'All' },
 	{ value: 'sent', label: 'Sent' },
+	{ value: 'replied', label: 'Replied' },
+	{ value: 'bounced', label: 'Bounced' },
 	{ value: 'retrying', label: 'Retrying' },
-	{ value: 'failed', label: 'Failed' }
+	{ value: 'delayed', label: 'Delayed' },
+	{ value: 'failed', label: 'Failed' },
+	{ value: 'skipped', label: 'Skipped' },
+	{ value: 'manual_send', label: 'Manual sends' }
 ];
 
 const STATUS_LABEL: Record<DeliveryLogStatus, string> = {
 	sent: 'Sent',
+	replied: 'Replied',
+	bounced: 'Bounced',
 	retrying: 'Retrying',
-	failed: 'Failed'
+	failed: 'Failed',
+	skipped: 'Skipped',
+	delayed: 'Delayed',
+	manual_send: 'Manual send'
 };
 
 const STATUS_BADGE_CLASS: Record<DeliveryLogStatus, string> = {
 	sent: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+	replied: 'bg-sky-500/10 text-sky-600 border-sky-500/30',
+	bounced: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
 	retrying: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-	failed: 'bg-red-500/10 text-red-600 border-red-500/30'
+	failed: 'bg-red-500/10 text-red-600 border-red-500/30',
+	skipped: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+	delayed: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30',
+	manual_send: 'bg-sky-500/10 text-sky-600 border-sky-500/30'
 };
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -43,6 +58,29 @@ function formatDateTime(value: string) {
 		dateStyle: 'medium',
 		timeStyle: 'short'
 	}).format(date);
+}
+
+function formatDelayDuration(delayMs: number | null) {
+	if (delayMs == null || Number.isNaN(delayMs) || delayMs <= 0) {
+		return null;
+	}
+
+	const totalSeconds = Math.round(delayMs / 1000);
+	if (totalSeconds <= 0) {
+		return '1 second';
+	}
+
+	if (totalSeconds < 60) {
+		return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}`;
+	}
+
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	if (seconds === 0) {
+		return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+	}
+
+	return `${minutes} minute${minutes === 1 ? '' : 's'} ${seconds} second${seconds === 1 ? '' : 's'}`;
 }
 
 function formatContactName(options: { firstName: string | null; lastName: string | null; email: string }) {
@@ -79,7 +117,7 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 		pageSize
 	});
 
-		const logs = (data?.logs ?? []) as SequenceDeliveryLogEntry[];
+	const logs = (data?.logs ?? []) as SequenceDeliveryLogEntry[];
 	const total = data?.total ?? 0;
 	const totalPages = data?.totalPages ?? 0;
 
@@ -262,13 +300,83 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 											<th className="px-4 py-3 font-semibold">Attempts</th>
 											<th className="px-4 py-3 font-semibold">Message ID</th>
 											<th className="px-4 py-3 font-semibold">Recorded</th>
-											<th className="px-4 py-3 font-semibold">Error</th>
+											<th className="px-4 py-3 font-semibold">Details</th>
 										</tr>
 									</thead>
 									<tbody className="divide-y divide-border/40 bg-background">
 										{logs.map((log) => {
-											const statusLabel = STATUS_LABEL[log.status];
-											const badgeClass = STATUS_BADGE_CLASS[log.status];
+											const statusLabel = STATUS_LABEL[log.status] ?? log.status;
+											const badgeClass = STATUS_BADGE_CLASS[log.status] ?? 'border-border/60 bg-muted/50 text-muted-foreground';
+											const detailsContent = (() => {
+												if (log.status === 'skipped') {
+													const reasonLabel = (() => {
+														switch (log.skipReason) {
+															case 'draft':
+																return 'Sequence is still in draft';
+															case 'paused':
+																return 'Sequence is paused';
+															case 'deleted':
+																return 'Sequence was deleted';
+															case 'status_changed':
+																return 'Contact status changed before send';
+															case 'reply_stop':
+																return 'Skipped because the contact replied';
+															case 'reply_delay':
+																return 'Waiting to follow up after a reply';
+															case 'bounce_policy':
+																return 'Skipped due to a recorded bounce';
+															case 'outside_window':
+																return 'Waiting for the allowed send window';
+															default:
+																return 'Skipped';
+														}
+													})();
+
+													const rescheduleNote =
+														log.skipReason === 'reply_delay' && log.rescheduledFor
+															? `Rescheduled for ${formatDateTime(log.rescheduledFor)}`
+														: null;
+
+													return (
+														<div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+														<span>{reasonLabel}</span>
+														{rescheduleNote ? <span className="text-[11px] text-muted-foreground/80">{rescheduleNote}</span> : null}
+													</div>
+													);
+												}
+
+												if (log.status === 'delayed') {
+													const reasonLabel = log.delayReason === 'delayed_due_to_min_gap'
+														? 'Delayed to respect the minimum send interval'
+														: 'Delivery delayed';
+													const delayLabel = formatDelayDuration(log.delayMs);
+													const minIntervalLabel = typeof log.minIntervalMinutes === 'number'
+														? `Minimum interval: ${log.minIntervalMinutes} minute${log.minIntervalMinutes === 1 ? '' : 's'}`
+														: null;
+
+													return (
+														<div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+															<span>{reasonLabel}</span>
+															{delayLabel ? (
+																<span className="text-[11px] text-muted-foreground/80">Delay applied: {delayLabel}</span>
+															) : null}
+															{minIntervalLabel ? (
+																<span className="text-[11px] text-muted-foreground/80">{minIntervalLabel}</span>
+															) : null}
+														</div>
+													);
+												}
+
+												if (log.errorMessage) {
+													return (
+														<span className="text-xs text-destructive" title={log.errorMessage}>
+															{log.errorMessage}
+														</span>
+													);
+												}
+
+												return <span className="text-muted-foreground/70">—</span>;
+											})();
 											return (
 												<tr key={log.id}>
 													<td className="px-4 py-3">
@@ -298,16 +406,10 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 															<span className="text-muted-foreground/70">—</span>
 														)}
 													</td>
-													<td className="px-4 py-3 text-sm text-muted-foreground">{formatDateTime(log.createdAt)}</td>
 													<td className="px-4 py-3 text-sm text-muted-foreground">
-														{log.errorMessage ? (
-															<span className="text-xs text-destructive" title={log.errorMessage}>
-																{log.errorMessage}
-															</span>
-														) : (
-															<span className="text-muted-foreground/70">—</span>
-														)}
+														<span suppressHydrationWarning>{formatDateTime(log.createdAt)}</span>
 													</td>
+													<td className="px-4 py-3 text-sm text-muted-foreground">{detailsContent}</td>
 												</tr>
 											);
 										})}

@@ -74,7 +74,34 @@ async function main() {
 
   try {
     const result = await runSequenceWorker(options);
-    console.log('Sequence worker completed:', result);
+    console.log('Sequence worker completed:', {
+      scanned: result.scanned,
+      sent: result.sent,
+      failed: result.failed,
+      retried: result.retried,
+      skipped: result.skipped,
+      durationMs: result.durationMs
+    });
+
+    if (result.details.length > 0) {
+      console.log('Task outcomes:');
+      console.table(
+        result.details.map((detail) => ({
+          statusId: detail.statusId,
+          sequenceId: detail.sequenceId,
+          contactId: detail.contactId,
+          outcome: detail.outcome,
+          reason: detail.reason ?? null,
+          attempts: detail.attempts,
+          messageId: detail.messageId ?? null,
+          rescheduledFor: detail.rescheduledFor ?? null
+        }))
+      );
+    }
+
+    if (result.diagnostics) {
+      console.log('Diagnostics:', result.diagnostics);
+    }
   } finally {
     await client.end({ timeout: 5 });
   }
