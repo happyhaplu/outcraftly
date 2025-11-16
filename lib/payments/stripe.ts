@@ -8,10 +8,7 @@ import {
 } from '@/lib/db/queries';
 import { executeWithResilience } from '@/lib/services/resilience';
 import { getLogger } from '@/lib/logger';
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-04-30.basil'
-});
+import { createStripeClient, getBaseUrl } from '@/lib/payments/stripe-utils';
 
 const stripeLogger = getLogger({ component: 'stripe' });
 
@@ -28,6 +25,9 @@ export async function createCheckoutSession({
     redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
   }
 
+  const stripe = createStripeClient();
+  const baseUrl = getBaseUrl();
+
   const session = await executeWithResilience(
     'stripe_checkout_session_create',
     () =>
@@ -40,8 +40,8 @@ export async function createCheckoutSession({
           }
         ],
         mode: 'subscription',
-        success_url: `${process.env.BASE_URL}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.BASE_URL}/pricing`,
+        success_url: `${baseUrl}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/pricing`,
         customer: team.stripeCustomerId || undefined,
         client_reference_id: user.id.toString(),
         allow_promotion_codes: true,
@@ -64,6 +64,9 @@ export async function createCustomerPortalSession(team: Team) {
   if (!team.stripeCustomerId || !team.stripeProductId) {
     redirect('/pricing');
   }
+
+  const stripe = createStripeClient();
+  const baseUrl = getBaseUrl();
 
   let configuration: Stripe.BillingPortal.Configuration;
   const configurations = await executeWithResilience(
@@ -138,7 +141,7 @@ export async function createCustomerPortalSession(team: Team) {
     () =>
       stripe.billingPortal.sessions.create({
         customer: team.stripeCustomerId!,
-        return_url: `${process.env.BASE_URL}/dashboard`,
+        return_url: `${baseUrl}/dashboard`,
         configuration: configuration.id
       }),
     { breakerKey: 'stripe:portal-session', timeoutMs: 10000, retries: 2 }
@@ -178,6 +181,8 @@ export async function handleSubscriptionChange(
 }
 
 export async function getStripePrices() {
+  const stripe = createStripeClient();
+
   const prices = await executeWithResilience(
     'stripe_price_list_active',
     () =>
@@ -201,6 +206,8 @@ export async function getStripePrices() {
 }
 
 export async function getStripeProducts() {
+  const stripe = createStripeClient();
+
   const products = await executeWithResilience(
     'stripe_product_list',
     () =>
