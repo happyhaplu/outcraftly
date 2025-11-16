@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "node_modules",
+    "design",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "tests/**/*",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ]
+}

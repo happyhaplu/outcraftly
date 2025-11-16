@@ -71,9 +71,10 @@ describe('runReplyDetectionWorker', () => {
     const repository: ReplyDetectionRepository = {
       listEligibleSenders: vi.fn(async () => [baseSender]),
       findContactByEmail: vi.fn(async () => null),
+      findContactById: vi.fn(async () => null),
       findActiveSequenceStatuses: vi.fn(async () => []),
-      findDeliveryLogIdByMessageId: vi.fn(async () => null),
-      recordReply: vi.fn(async () => ({ recorded: false }))
+      findDeliveryLogsByMessageIds: vi.fn(async () => []),
+      recordReply: vi.fn(async () => ({ recorded: false, statusUpdated: false, deliveryLogId: null }))
     };
 
     const { metrics } = await runReplyDetectionWorker({
@@ -110,11 +111,12 @@ describe('runReplyDetectionWorker', () => {
         teamId: baseSender.teamId,
         email: 'contact@example.com'
       })),
+      findContactById: vi.fn(async () => null),
       findActiveSequenceStatuses: vi.fn(async () => [
         { id: 'status-1', sequenceId: 'sequence-1', stepId: 'step-1', status: 'pending' }
       ]),
-      findDeliveryLogIdByMessageId: vi.fn(async () => null),
-      recordReply: vi.fn(async () => ({ recorded: true, deliveryLogId: 'log-1' }))
+      findDeliveryLogsByMessageIds: vi.fn(async () => []),
+      recordReply: vi.fn(async () => ({ recorded: true, statusUpdated: true, deliveryLogId: 'log-1' }))
     };
 
     const { metrics } = await runReplyDetectionWorker({
@@ -124,8 +126,8 @@ describe('runReplyDetectionWorker', () => {
     });
 
     expect(repository.findContactByEmail).toHaveBeenCalledWith(baseSender.teamId, 'contact@example.com');
-    expect(repository.findActiveSequenceStatuses).toHaveBeenCalledWith('contact-1');
-    expect(repository.recordReply).toHaveBeenCalledTimes(1);
+  expect(repository.findActiveSequenceStatuses).toHaveBeenCalledWith('contact-1', { sequenceIds: undefined });
+  expect(repository.recordReply).toHaveBeenCalledTimes(1);
 
     const [recordCall] = (repository.recordReply as unknown as ReturnType<typeof vi.fn>).mock.calls;
     expect(recordCall?.[0]).toMatchObject({
@@ -157,13 +159,14 @@ describe('runReplyDetectionWorker', () => {
         teamId: baseSender.teamId,
         email: 'contact@example.com'
       })),
+      findContactById: vi.fn(async () => null),
       findActiveSequenceStatuses: vi.fn(async () => [
         { id: 'status-1', sequenceId: 'sequence-1', stepId: 'step-1', status: 'sent' }
       ]),
-      findDeliveryLogIdByMessageId: vi.fn(async () => null),
+      findDeliveryLogsByMessageIds: vi.fn(async () => []),
       recordReply: vi.fn(async ({ status, message }) => {
         createdLogs.push({ statusId: status.id, type: 'reply', messageId: message.messageId });
-        return { recorded: true, deliveryLogId: 'log-1' };
+        return { recorded: true, statusUpdated: true, deliveryLogId: 'log-1' };
       })
     };
 

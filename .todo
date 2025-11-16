@@ -1,0 +1,2 @@
+[ ] Split logger into server/client modules and ensure console patching only on server.
+[ ] Update API handler to map Auth/Workspace/Forbidden/Validation errors to correct status codes and sanitize success payloads.

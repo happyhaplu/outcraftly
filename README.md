@@ -137,3 +137,167 @@ In your Vercel project settings (or during deployment), add all the necessary en
 4. `POSTGRES_URL`: Set this to your production database URL.
 5. `AUTH_SECRET`: Set this to a random string. `openssl rand -base64 32` will generate one.
 
+## Production Variables Matrix
+
+| Variable | Purpose | Required | Example |
+| --- | --- | --- | --- |
+| `POSTGRES_URL` | Connection string for the Postgres database | Yes | `postgresql://postgres:postgres@localhost:54322/postgres` |
+| `STRIPE_SECRET_KEY` | Stripe API key for billing operations | Yes | `sk_live_...` |
+| `STRIPE_WEBHOOK_SECRET` | Verifies Stripe webhook signatures | Yes | `whsec_...` |
+| `BASE_URL` | Public site URL used in links and callbacks | Yes | `https://yourdomain.com` |
+| `AUTH_SECRET` | JWT signing key for user sessions (32+ bytes) | Yes | Output of `openssl rand -base64 32` |
+| `SENDER_CREDENTIALS_KEY` | Encryption key for stored SMTP credentials | Yes | `your-32-character-secret-must-be-long` |
+| `SEQUENCE_EVENTS_SECRET` | Authenticates webhook events from sequence tracker | Yes | `random-sequence-events-secret` |
+| `SEQUENCE_WORKER_SECRET` | Protects `/api/internal/cron/sequence-worker` endpoint | Yes | `random-sequence-worker-token` |
+| `REPLY_WORKER_SECRET` | Protects `/api/internal/cron/reply-worker` endpoint | Yes | `random-reply-worker-token` |
+| `MIN_SEND_INTERVAL_MINUTES` | Overrides default pacing interval between sends | No (defaults to `5`) | `5` |
+| `DEBUG_INBOUND` | Enables verbose inbound mail logging | No (defaults to `false`) | `false` |
+
+### Generating Strong Secrets
+
+Create secure values for `AUTH_SECRET` and `SENDER_CREDENTIALS_KEY` before deploying:
+
+```bash
+openssl rand -base64 32
+```
+
+Store the generated strings in your production environment provider.
+
+## Deployment Checklist
+
+1. **Install dependencies**
+
+   ```bash
+   pnpm install
+   ```
+
+2. **Apply database migrations and seed baseline data**
+
+   ```bash
+   pnpm db:migrate && pnpm db:seed
+   ```
+
+3. **Build and smoke-test the production bundle**
+
+   ```bash
+   pnpm build && pnpm start
+   ```
+
+4. **Configure workers**
+   - Set `SEQUENCE_WORKER_SECRET` and `REPLY_WORKER_SECRET` in your hosting provider.
+   - Schedule the sequence worker: `curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"`.
+   - Schedule the reply worker: `curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"`.
+
+5. **Stripe webhook setup**
+   - Create or update a Stripe webhook pointing to `$BASE_URL/api/stripe/webhook`.
+   - Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+
+6. **Cron job examples**
+
+   Example GitHub Actions snippet to invoke the workers nightly:
+
+   ```yaml
+   name: Worker Cron
+   on:
+     schedule:
+       - cron: '0 * * * *'
+   jobs:
+     sequence-worker:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Trigger sequence worker
+           run: |
+             curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
+           env:
+             BASE_URL: ${{ secrets.BASE_URL }}
+             SEQUENCE_WORKER_SECRET: ${{ secrets.SEQUENCE_WORKER_SECRET }}
+     reply-worker:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Trigger reply worker
+           run: |
+             curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
+           env:
+             BASE_URL: ${{ secrets.BASE_URL }}
+             REPLY_WORKER_SECRET: ${{ secrets.REPLY_WORKER_SECRET }}
+   ```
+
+   Or configure Render Cron with a JSON payload:
+
+   ```json
+   {
+     "tasks": [
+       {
+         "name": "sequence-worker",
+         "schedule": "*/15 * * * *",
+         "command": "curl \"$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET\""
+       },
+       {
+         "name": "reply-worker",
+         "schedule": "0 * * * *",
+         "command": "curl \"$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET\""
+       }
+     ]
+   }
+   ```
+
+  ## Workers and Cron Jobs
+
+  Use the following authenticated curl calls from your scheduler to invoke the workers:
+
+  ```bash
+  curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
+  curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
+  ```
+
+  - Sequence worker: run every 5–15 minutes to keep enrollments flowing smoothly without overrunning your provider limits.
+  - Reply worker: run every 15–30 minutes so inbound responses are processed promptly.
+  - Required environment variables: `BASE_URL`, `SEQUENCE_WORKER_SECRET`, and `REPLY_WORKER_SECRET` must be present in the scheduler context.
+
+  Example Render Cron configuration:
+
+  ```json
+  {
+    "tasks": [
+      {
+        "name": "sequence-worker",
+        "schedule": "*/10 * * * *",
+        "command": "curl \"$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET\""
+      },
+      {
+        "name": "reply-worker",
+        "schedule": "*/30 * * * *",
+        "command": "curl \"$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET\""
+      }
+    ]
+  }
+  ```
+
+  Example GitHub Actions workflow if you prefer to schedule via Actions:
+
+  ```yaml
+  name: Worker Cron
+  on:
+    schedule:
+      - cron: '*/10 * * * *'
+  jobs:
+    sequence-worker:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Trigger sequence worker
+          run: |
+            curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
+          env:
+            BASE_URL: ${{ secrets.BASE_URL }}
+            SEQUENCE_WORKER_SECRET: ${{ secrets.SEQUENCE_WORKER_SECRET }}
+    reply-worker:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Trigger reply worker
+          run: |
+            curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
+          env:
+            BASE_URL: ${{ secrets.BASE_URL }}
+            REPLY_WORKER_SECRET: ${{ secrets.REPLY_WORKER_SECRET }}
+  ```
+

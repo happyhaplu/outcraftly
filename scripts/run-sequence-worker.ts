@@ -1,7 +1,10 @@
 import { exit } from 'node:process';
 
+import { randomUUID } from 'node:crypto';
+
 import { client } from '@/lib/db/drizzle';
 import { runSequenceWorker } from '@/lib/workers/sequence-worker';
+import { withLogContext, getLogger } from '@/lib/logger';
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -70,44 +73,36 @@ function parseArgs() {
 
 async function main() {
   const options = parseArgs();
-  console.log('Running sequence worker with options:', options);
 
-  try {
-    const result = await runSequenceWorker(options);
-    console.log('Sequence worker completed:', {
-      scanned: result.scanned,
-      sent: result.sent,
-      failed: result.failed,
-      retried: result.retried,
-      skipped: result.skipped,
-      durationMs: result.durationMs
-    });
+  await withLogContext({ requestId: randomUUID(), component: 'sequence-worker-cli' }, async () => {
+    const logger = getLogger();
+    logger.info({ options }, 'Running sequence worker');
 
-    if (result.details.length > 0) {
-      console.log('Task outcomes:');
-      console.table(
-        result.details.map((detail) => ({
-          statusId: detail.statusId,
-          sequenceId: detail.sequenceId,
-          contactId: detail.contactId,
-          outcome: detail.outcome,
-          reason: detail.reason ?? null,
-          attempts: detail.attempts,
-          messageId: detail.messageId ?? null,
-          rescheduledFor: detail.rescheduledFor ?? null
-        }))
-      );
+    try {
+      const result = await runSequenceWorker(options);
+      logger.info({
+        scanned: result.scanned,
+        sent: result.sent,
+        failed: result.failed,
+        retried: result.retried,
+        skipped: result.skipped,
+        durationMs: result.durationMs
+      }, 'Sequence worker completed');
+
+      if (result.details.length > 0) {
+        logger.info({ details: result.details }, 'Sequence worker task outcomes');
+      }
+
+      if (result.diagnostics) {
+        logger.info({ diagnostics: result.diagnostics }, 'Sequence worker diagnostics snapshot');
+      }
+    } finally {
+      await client.end({ timeout: 5 });
     }
-
-    if (result.diagnostics) {
-      console.log('Diagnostics:', result.diagnostics);
-    }
-  } finally {
-    await client.end({ timeout: 5 });
-  }
+  });
 }
 
 main().catch((error) => {
-  console.error('Sequence worker failed:', error);
+  getLogger({ component: 'sequence-worker-cli' }).error({ err: error }, 'Sequence worker failed');
   exit(1);
 });

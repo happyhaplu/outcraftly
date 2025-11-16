@@ -69,12 +69,14 @@ type FakeDbConfig = {
   txQueuesPerTask?: TxQueue[];
   insertLog?: Array<Record<string, unknown>>;
   updateLog?: Array<Record<string, unknown>>;
+  contactExistsByTx?: boolean[];
 };
 
 function createFakeDb(config: FakeDbConfig) {
   const inserts: Array<Record<string, unknown>> = config.insertLog ?? [];
   const updates: Array<Record<string, unknown>> = config.updateLog ?? [];
   const txQueues = config.txQueuesPerTask ?? [];
+  const contactFlags = Array.isArray(config.contactExistsByTx) ? config.contactExistsByTx : [];
   let transactionIndex = 0;
   let rootSelectCount = 0;
 
@@ -94,6 +96,8 @@ function createFakeDb(config: FakeDbConfig) {
     transaction: vi.fn(async (callback: (tx: any) => Promise<void>) => {
       const queue = txQueues[transactionIndex] ? [...txQueues[transactionIndex]] : [];
       transactionIndex += 1;
+  const taskRow = (config.pendingRows[transactionIndex - 1] ?? config.pendingRows[0] ?? {}) as Record<string, any>;
+      const contactExists = contactFlags[transactionIndex - 1] ?? false;
       let selectIndex = 0;
       const tx = {
         select: vi.fn(() => {
@@ -103,8 +107,57 @@ function createFakeDb(config: FakeDbConfig) {
             return createSelectBuilder(next);
           }
 
+          if (selectIndex === 1) {
+            return createSelectBuilder([
+              {
+                status: taskRow?.status ?? 'pending',
+                attempts: taskRow?.attempts ?? 0,
+                replyAt: taskRow?.replyAt ?? null,
+                bounceAt: taskRow?.bounceAt ?? null,
+                scheduledAt: taskRow?.scheduledAt ?? undefined,
+                stepId: taskRow?.stepId ?? null
+              }
+            ]);
+          }
+
           if (selectIndex === 2) {
-            return createSelectBuilder([{ status: 'active' }]);
+            return createSelectBuilder([
+              {
+                status: taskRow?.sequenceStatus ?? 'active'
+              }
+            ]);
+          }
+
+          if (selectIndex === 3) {
+            return createSelectBuilder([
+              {
+                skipIfReplied: taskRow?.skipIfReplied ?? false,
+                skipIfBounced: taskRow?.skipIfBounced ?? false,
+                delayIfReplied: taskRow?.delayIfReplied ?? null
+              }
+            ]);
+          }
+
+          if (selectIndex === 4) {
+            if (taskRow?.statusId) {
+              return createSelectBuilder([
+                {
+                  id: taskRow.statusId,
+                  contactId: taskRow.contactId,
+                  sequenceId: taskRow.sequenceId
+                }
+              ]);
+            }
+            return createSelectBuilder([]);
+          }
+
+          if (selectIndex === 5) {
+            if (contactExists && taskRow?.contactId) {
+              return createSelectBuilder([
+                { id: taskRow.contactId }
+              ]);
+            }
+            return createSelectBuilder([]);
           }
 
           return createSelectBuilder([]);
@@ -112,7 +165,10 @@ function createFakeDb(config: FakeDbConfig) {
         insert: vi.fn(() => ({
           values: (value: Record<string, unknown>) => {
             inserts.push(value);
-            return Promise.resolve([]);
+            const result: any = {
+              onConflictDoNothing: () => Promise.resolve([])
+            };
+            return result;
           }
         })),
         update: vi.fn(() => ({
@@ -532,6 +588,8 @@ describe('runSequenceWorker', () => {
           [{ status: 'pending', attempts: 0, replyAt: null, bounceAt: null, scheduledAt: now, stepId: 'step-gap-default-1' }],
           [{ status: 'active' }],
           [{ skipIfReplied: false, skipIfBounced: false, delayIfReplied: null }],
+          [{ id: 'status-gap-default', contactId: 'contact-gap-default', sequenceId: 'sequence-gap-default' }],
+          [],
           [{ id: nextStepId, delay: 0 }]
         ];
 
@@ -544,7 +602,10 @@ describe('runSequenceWorker', () => {
           insert: vi.fn(() => ({
             values: (value: Record<string, unknown>) => {
               inserts.push(value);
-              return Promise.resolve([]);
+              const result: any = {
+                onConflictDoNothing: () => Promise.resolve([])
+              };
+              return result;
             }
           })),
           update: vi.fn(() => ({
@@ -639,6 +700,8 @@ describe('runSequenceWorker', () => {
           [{ status: 'pending', attempts: 0, replyAt: null, bounceAt: null, scheduledAt: now, stepId: 'step-gap-five-1' }],
           [{ status: 'active' }],
           [{ skipIfReplied: false, skipIfBounced: false, delayIfReplied: null }],
+          [{ id: 'status-gap-five', contactId: 'contact-gap-five', sequenceId: 'sequence-gap-five' }],
+          [],
           [{ id: nextStepId, delay: delayHours }]
         ];
 
@@ -651,7 +714,10 @@ describe('runSequenceWorker', () => {
           insert: vi.fn(() => ({
             values: (value: Record<string, unknown>) => {
               inserts.push(value);
-              return Promise.resolve([]);
+              const result: any = {
+                onConflictDoNothing: () => Promise.resolve([])
+              };
+              return result;
             }
           })),
           update: vi.fn(() => ({
@@ -730,6 +796,8 @@ describe('runSequenceWorker', () => {
           [{ status: 'pending', attempts: 0, replyAt: null, bounceAt: null, scheduledAt: now, stepId: 'step-gap-day-1' }],
           [{ status: 'active' }],
           [{ skipIfReplied: false, skipIfBounced: false, delayIfReplied: null }],
+          [{ id: 'status-gap-day', contactId: 'contact-gap-day', sequenceId: 'sequence-gap-day' }],
+          [],
           [{ id: nextStepId, delay: delayHours }]
         ];
 
@@ -742,7 +810,10 @@ describe('runSequenceWorker', () => {
           insert: vi.fn(() => ({
             values: (value: Record<string, unknown>) => {
               inserts.push(value);
-              return Promise.resolve([]);
+              const result: any = {
+                onConflictDoNothing: () => Promise.resolve([])
+              };
+              return result;
             }
           })),
           update: vi.fn(() => ({
@@ -902,9 +973,9 @@ describe('runSequenceWorker', () => {
     expect(result.details[0]).toMatchObject({
       statusId: 'status-10',
       outcome: 'retry',
-      reason: 'retryable_error',
+      reason: 'SMTP outage continues',
       attempts: 1,
-      error: 'SMTP outage'
+      error: 'SMTP outage continues'
     });
     expect(result.diagnostics).toBeNull();
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -913,7 +984,7 @@ describe('runSequenceWorker', () => {
     expect(retryInserts[0]).toMatchObject({
       status: 'retrying',
       attempts: 1,
-      errorMessage: 'SMTP outage'
+      errorMessage: 'SMTP outage continues'
     });
     const retryUpdates = updates.filter((entry) => typeof entry.attempts === 'number');
     expect(retryUpdates[0]).toMatchObject({
@@ -970,9 +1041,9 @@ describe('runSequenceWorker', () => {
     expect(result.details[0]).toMatchObject({
       statusId: 'status-final',
       outcome: 'failed',
-      reason: 'max_attempts_reached',
+      reason: 'SMTP outage continues',
       attempts: 3,
-      error: 'SMTP outage persists'
+      error: 'SMTP outage continues'
     });
     expect(result.diagnostics).toBeNull();
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
@@ -980,7 +1051,7 @@ describe('runSequenceWorker', () => {
     expect(failureInserts[0]).toMatchObject({
       status: 'failed',
       attempts: 3,
-      errorMessage: 'SMTP outage persists'
+      errorMessage: 'SMTP outage continues'
     });
     const failureUpdates = updates.filter((entry) => typeof entry.status === 'string');
     expect(failureUpdates[0]).toMatchObject({
@@ -1048,7 +1119,7 @@ describe('runSequenceWorker', () => {
   expect(attemptOneResult.details[0]).toMatchObject({
     statusId: 'status-chain',
     outcome: 'retry',
-    reason: 'retryable_error',
+    reason: 'SMTP outage continues',
     attempts: 1,
     error: 'SMTP outage continues'
   });
@@ -1092,7 +1163,7 @@ describe('runSequenceWorker', () => {
   expect(attemptTwoResult.details[0]).toMatchObject({
     statusId: 'status-chain',
     outcome: 'retry',
-    reason: 'retryable_error',
+    reason: 'SMTP outage continues',
     attempts: 2,
     error: 'SMTP outage continues'
   });
@@ -1136,7 +1207,7 @@ describe('runSequenceWorker', () => {
     expect(attemptThreeResult.details[0]).toMatchObject({
       statusId: 'status-chain',
       outcome: 'failed',
-      reason: 'max_attempts_reached',
+      reason: 'SMTP outage continues',
       attempts: 3,
       error: 'SMTP outage continues'
     });

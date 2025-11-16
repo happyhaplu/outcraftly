@@ -1,0 +1,25 @@
+# Dependencies
+node_modules
+
+# Git metadata
+.git
+
+# Logs
+logs
+*.log
+
+# Build cache
+.next/cache
+coverage
+
+# Environment files
+.env
+.env.*
+
+# Temporary/local artifacts
+*.tmp
+*.swp
+*.swo
+.DS_Store
+docker-data
+volumes

@@ -1,9 +1,12 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { getUser, getTeamForUser } from '@/lib/db/queries';
-import { SWRConfig } from 'swr';
-import { Toaster } from '@/components/ui/toaster';
+import { assertProductionSecrets } from '@/lib/startup/validate-env';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+export const experimental_ppr = false;
 
 export const metadata: Metadata = {
   title: 'Next.js SaaS Starter',
@@ -20,6 +23,8 @@ const inter = Inter({
   display: 'swap'
 });
 
+assertProductionSecrets();
+
 export default function RootLayout({
   children
 }: {
@@ -31,19 +36,9 @@ export default function RootLayout({
       className={`bg-white dark:bg-gray-900 text-slate-900 dark:text-white ${inter.className}`}
     >
       <body className="min-h-[100dvh] bg-gray-50">
-        <SWRConfig
-          value={{
-            fallback: {
-              // We do NOT await here
-              // Only components that read this data will suspend
-              '/api/user': getUser(),
-              '/api/team': getTeamForUser()
-            }
-          }}
-        >
-          {children}
-        </SWRConfig>
-        <Toaster />
+        {/* Client-only UI like Toaster and Error boundary are mounted in the client layout
+            under `app/(client)/layout.tsx`. Keep this server layout free of client imports. */}
+        {children}
       </body>
     </html>
   );

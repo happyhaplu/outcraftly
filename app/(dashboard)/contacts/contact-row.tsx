@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
@@ -33,28 +34,62 @@ export function ContactRow({
   onDelete,
   onViewDetails
 }: ContactRowProps) {
+  // Top-level hook usage for derived values to keep rendering deterministic
+  const stableId = useMemo(() => contact?.id ?? contact?.email ?? 'unknown-contact', [contact]);
+
+  const displayName = useMemo(() => {
+    const first = contact?.firstName ?? '';
+    const last = contact?.lastName ?? '';
+    const full = `${first} ${last}`.trim();
+    return full.length ? full : contact?.email ?? 'Unknown';
+  }, [contact]);
+
+  const safeEmail = contact?.email ?? '';
+  const safeCompany = contact?.company ?? '';
+
+  const createdAtFormatted = useMemo(() => {
+    const raw = contact?.createdAt;
+    if (!raw) return '—';
+    try {
+      const date = new Date(raw);
+      if (isNaN(date.getTime())) return '—';
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      }).format(date);
+    } catch {
+      return '—';
+    }
+  }, [contact]);
+
+  // Ensure required handlers exist before rendering action controls.
+  const safeOnToggle = onToggleSelect ?? (() => {});
+  const safeOnEdit = onEdit ?? (() => {});
+  const safeOnEditTags = onEditTags ?? (() => {});
+  const safeOnDelete = onDelete ?? (() => {});
+  const safeOnViewDetails = onViewDetails ?? (() => {});
+
   return (
     <tr className="hover:bg-muted/30">
       <td className="px-4 py-3 align-top">
         <Checkbox
           checked={isSelected}
-          onCheckedChange={(checked: boolean | 'indeterminate') => onToggleSelect(contact.id, checked === true)}
-          aria-label={`Select ${contact.firstName} ${contact.lastName}`}
+          onCheckedChange={(checked: boolean | 'indeterminate') => safeOnToggle(stableId, checked === true)}
+          aria-label={`Select ${displayName}`}
         />
       </td>
       <td className="px-4 py-3 text-sm text-muted-foreground align-top">
-        <div className="font-medium text-foreground">
-          {contact.firstName} {contact.lastName}
-        </div>
-        <div>{contact.email}</div>
-        {contact.jobTitle ? <div className="text-xs text-muted-foreground">{contact.jobTitle}</div> : null}
+        <div className="font-medium text-foreground">{displayName}</div>
+        <div>{safeEmail}</div>
+        {contact?.jobTitle ? <div className="text-xs text-muted-foreground">{contact.jobTitle}</div> : null}
       </td>
-      <td className="px-4 py-3 text-sm text-muted-foreground align-top">{contact.company}</td>
+      <td className="px-4 py-3 text-sm text-muted-foreground align-top">{safeCompany}</td>
       <td className="px-4 py-3 align-top">
-        {contact.tags?.length ? (
+        {contact?.tags?.length ? (
           <div className="flex flex-wrap gap-2">
             {contact.tags.map((tag) => (
-              <Badge key={`${contact.id}-${tag}`} variant="secondary">
+              <Badge key={`${stableId}-${tag}`} variant="secondary">
                 {tag}
               </Badge>
             ))}
@@ -63,13 +98,7 @@ export function ContactRow({
           <span className="text-xs text-muted-foreground">No tags</span>
         )}
       </td>
-      <td className="px-4 py-3 text-sm text-muted-foreground align-top">
-        {new Intl.DateTimeFormat('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric'
-        }).format(new Date(contact.createdAt))}
-      </td>
+      <td className="px-4 py-3 text-sm text-muted-foreground align-top">{createdAtFormatted}</td>
       <td className="px-4 py-3 text-right align-top">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -78,13 +107,10 @@ export function ContactRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onSelect={() => onViewDetails(contact)}>View details</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onEdit(contact)}>Edit contact</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onEditTags(contact)}>Edit tags</DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => onDelete(contact)}
-              className="text-destructive focus:text-destructive"
-            >
+            <DropdownMenuItem onSelect={() => safeOnViewDetails(contact)}>View details</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => safeOnEdit(contact)}>Edit contact</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => safeOnEditTags(contact)}>Edit tags</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => safeOnDelete(contact)} className="text-destructive focus:text-destructive">
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

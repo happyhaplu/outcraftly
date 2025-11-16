@@ -1,4 +1,6 @@
 import { desc, and, eq, isNull, isNotNull, inArray, sql, gte, lte, asc, type SQL } from 'drizzle-orm';
+import { cookies } from 'next/headers';
+
 import { db } from './drizzle';
 import { aggregateSequenceRows, type StepSummary, type RawSequenceRow } from './aggregator';
 import { DEFAULT_PLAN_USAGE_LIMITS, DEFAULT_USER_PLAN, type UserPlan } from '@/lib/config/plans';
@@ -25,7 +27,6 @@ import {
   type SequenceLifecycleStatus,
   type User
 } from './schema';
-import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
 import { normalizeTags } from '@/lib/validation/contact';
 import { computeScheduledUtc, type SequenceScheduleOptions } from '@/lib/timezone';
@@ -36,6 +37,25 @@ export const TRIAL_EXPIRED_ERROR_MESSAGE = 'Your trial has expired. Please upgra
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TRIAL_DURATION_DAYS = 14;
+
+const isBuildPhase = () => process.env.NEXT_PHASE === 'phase-production-build';
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
+async function getCookieStore(): Promise<CookieStore | null> {
+  try {
+    return await cookies();
+  } catch (error) {
+    if (isBuildPhase() || process.env.NODE_ENV === 'test') {
+      return null;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[auth] Unable to access cookies outside a request context', error);
+    }
+
+    return null;
+  }
+}
 
 export function calculateTrialExpiry(from: Date | string = new Date(), durationInDays = DEFAULT_TRIAL_DURATION_DAYS): Date {
   const base = from instanceof Date ? from : new Date(from ?? Date.now());
@@ -124,6 +144,41 @@ export async function countSequenceReplies(sequenceId: string): Promise<number> 
   return result?.replyCount ?? 0;
 }
 
+export async function findActiveSequenceStatuses(
+  contactId: string,
+  options: { sequenceIds?: string[] } = {},
+  client: DatabaseClient | any = db
+): Promise<Array<{ id: string; sequenceId: string; stepId: string | null; status: string }>> {
+  if (!contactId) {
+    return [];
+  }
+
+  const runner = client && typeof client.select === 'function' ? client : db;
+
+  const filters = [
+    eq(contactSequenceStatus.contactId, contactId),
+    eq(sequences.status, 'active'),
+    isNull(sequences.deletedAt)
+  ];
+
+  if (options.sequenceIds && options.sequenceIds.length > 0) {
+    filters.push(inArray(contactSequenceStatus.sequenceId, options.sequenceIds));
+  }
+
+  const whereClause = filters.length === 1 ? filters[0] : and(...filters);
+
+  return await runner
+    .select({
+      id: contactSequenceStatus.id,
+      sequenceId: contactSequenceStatus.sequenceId,
+      stepId: contactSequenceStatus.stepId,
+      status: contactSequenceStatus.status
+    })
+    .from(contactSequenceStatus)
+    .innerJoin(sequences, eq(contactSequenceStatus.sequenceId, sequences.id))
+    .where(whereClause);
+}
+
 export async function syncSequenceRepliesFromLogs(
   sequenceId: string,
   client: DatabaseClient | any = db
@@ -133,11 +188,39 @@ export async function syncSequenceRepliesFromLogs(
   }
 
   const runner = client && typeof client.execute === 'function' ? client : db;
+  const selector = client && typeof client.select === 'function' ? client : db;
+
   if (!runner || typeof runner.execute !== 'function') {
     return 0;
   }
 
   const shouldDebug = process.env.NODE_ENV !== 'production';
+
+  const [sequenceRow] = await selector
+    .select({ deletedAt: sequences.deletedAt })
+    .from(sequences)
+    .where(eq(sequences.id, sequenceId))
+    .limit(1);
+
+  if (!sequenceRow) {
+    if (shouldDebug) {
+      console.info?.('[SequenceAggregator] Skipping reply sync', {
+        sequenceId,
+        reason: 'missing'
+      });
+    }
+    return 0;
+  }
+
+  if (sequenceRow.deletedAt) {
+    if (shouldDebug) {
+      console.info?.('[SequenceAggregator] Skipping reply sync', {
+        sequenceId,
+        reason: 'deleted'
+      });
+    }
+    return 0;
+  }
 
   try {
     const hasSequenceLogsResult = await runner.execute(sql`
@@ -305,7 +388,12 @@ export async function activateScheduledSequences(
 }
 
 export async function getUser(): Promise<User | null> {
-  const sessionCookie = (await cookies()).get('session');
+  const cookieStore = await getCookieStore();
+  if (!cookieStore) {
+    return null;
+  }
+
+  const sessionCookie = cookieStore.get('session');
   if (!sessionCookie || !sessionCookie.value) {
     return null;
   }

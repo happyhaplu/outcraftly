@@ -22,12 +22,70 @@ import {
 import { getMinSendIntervalMinutes } from '@/lib/config/pacing';
 import { computeScheduledUtc, type SequenceScheduleOptions } from '@/lib/timezone';
 import { dispatchSequenceEmail, renderSequenceContent } from '@/lib/mail/sequence-mailer';
+import { generateFallbackMessageId, normalizeMessageId } from '@/lib/mail/message-id';
 import { decryptSecret, isProbablyEncryptedSecret } from '@/lib/security/encryption';
 import { ingestFallbackReplies } from '@/lib/replies/fallback-ingestion';
+import { getLogger } from '@/lib/logger';
+import { incrementCounter, registerCounter } from '@/lib/metrics';
+import { recordHeartbeat } from '@/lib/workers/heartbeat';
+import { ResilienceError } from '@/lib/services/resilience';
 
 const MAX_SEND_ATTEMPTS = 3;
 const RETRY_DELAY_MINUTES = 15;
 const DELIVERY_SCHEMA_CHECK_CACHE = new WeakSet<DatabaseClient>();
+
+const sendCounter = registerCounter('sequence_emails_sent', {
+  name: 'sequence_emails_sent',
+  description: 'Total sequence emails sent successfully'
+});
+
+const retryCounter = registerCounter('sequence_emails_retried', {
+  name: 'sequence_emails_retried',
+  description: 'Total sequence email retries attempted'
+});
+
+const errorCounter = registerCounter('sequence_emails_errors', {
+  name: 'sequence_emails_errors',
+  description: 'Total sequence email processing errors'
+});
+
+const replyCounter = registerCounter('sequence_replies_detected', {
+  name: 'sequence_replies_detected',
+  description: 'Total sequence replies detected during worker runs'
+});
+
+const normalizeSendError = (error: unknown): { message: string; code?: string } => {
+  const extractCode = (code: unknown): string | undefined => {
+    if (typeof code !== 'string') {
+      return undefined;
+    }
+    return code;
+  };
+
+  if (error instanceof ResilienceError) {
+    const rawCode = extractCode(error.code);
+    const lowered = rawCode?.toLowerCase();
+
+    if (lowered === 'circuit_open' || lowered === 'retry_exhausted') {
+      return { message: 'SMTP outage continues', code: rawCode };
+    }
+
+    return { message: error.message || 'SMTP outage continues', code: rawCode };
+  }
+
+  const maybeCode = extractCode((error as { code?: unknown })?.code);
+  const lowered = maybeCode?.toLowerCase();
+
+  if (lowered === 'circuit_open') {
+    return { message: 'SMTP outage continues', code: maybeCode };
+  }
+
+  if (error instanceof Error) {
+    return { message: error.message, code: maybeCode };
+  }
+
+  return { message: 'Unknown error while sending email', code: maybeCode };
+};
 
 type DatabaseClient = typeof db;
 
@@ -239,24 +297,17 @@ type SequenceSkipReason =
   | 'outside_window'
   | 'plan_limit';
 
+const workerLogger = getLogger({ component: 'sequence-worker' });
+
 function logWorkerEvent(level: 'info' | 'warn' | 'error', message: string, context?: Record<string, unknown>) {
-  if (process.env.NODE_ENV === 'production') {
-    return;
-  }
-
-  const payload = { tag: '[SequenceWorker]', level, message, ...(context ?? {}) };
-
-  if (level === 'warn') {
-    console.warn(payload);
-    return;
-  }
-
-  if (level === 'error') {
-    console.error(payload);
-    return;
-  }
-
-  console.info(payload);
+  workerLogger[level](
+    {
+      event: 'sequence-worker.event',
+      message,
+      ...(context ?? {})
+    },
+    message
+  );
 }
 
 function resolveSenderPassword(raw: string | null | undefined): string | null {
@@ -276,7 +327,13 @@ function resolveSenderPassword(raw: string | null | undefined): string | null {
 
     return decryptSecret(raw);
   } catch (error) {
-    console.warn('Failed to decrypt sender password, falling back to stored value', error instanceof Error ? error.message : error);
+    getLogger({ component: 'sequence-worker' }).warn(
+      {
+        err: error,
+        event: 'sender.decrypt.failed'
+      },
+      'Failed to decrypt sender password, falling back to stored value'
+    );
     return raw;
   }
 }
@@ -387,7 +444,10 @@ async function ensureDeliveryLogSchema(client: DatabaseClient) {
     await (client as any).execute(sql`ALTER TABLE delivery_logs ADD COLUMN IF NOT EXISTS status_id uuid`);
     await (client as any).execute(sql`ALTER TABLE delivery_logs ADD COLUMN IF NOT EXISTS skip_reason text`);
   } catch (error) {
-    console.warn('Failed to ensure delivery log schema', error instanceof Error ? error.message : error);
+    getLogger({ component: 'sequence-worker', event: 'schema.ensure.failed' }).warn(
+      { err: error },
+      'Failed to ensure delivery log schema'
+    );
   } finally {
     DELIVERY_SCHEMA_CHECK_CACHE.add(client);
   }
@@ -440,6 +500,7 @@ export async function runSequenceWorker(
   options: SequenceWorkerOptions = {},
   client: DatabaseClient = db
 ): Promise<SequenceWorkerResult> {
+  recordHeartbeat('sequence-worker');
   let now = options.now ?? new Date();
   let nowMs = now.getTime();
   const limit = Math.max(1, options.limit ?? 25);
@@ -478,6 +539,7 @@ export async function runSequenceWorker(
   try {
     const fallbackResult = await ingestFallbackReplies({ logger: logWorkerEvent });
     if (fallbackResult.processed > 0) {
+      replyCounter.increment(fallbackResult.processed);
       logWorkerEvent('info', 'Fallback reply ingestion processed events', {
         processed: fallbackResult.processed,
         filesProcessed: fallbackResult.filesProcessed
@@ -493,11 +555,19 @@ export async function runSequenceWorker(
   try {
     await activateScheduledSequences(options.teamId, client);
   } catch (err) {
-    console.warn('Failed to activate scheduled sequences', err instanceof Error ? err.message : err);
+    getLogger({ component: 'sequence-worker', event: 'scheduled.activate.failed' }).warn(
+      { err },
+      'Failed to activate scheduled sequences'
+    );
   }
 
-  let tasks = await fetchPendingDeliveries(client, now, limit, options.teamId);
-  tasks = await hydratePendingDeliveryPersonalisation(client, tasks);
+  const rawTasks = await fetchPendingDeliveries(client, now, limit, options.teamId);
+  logWorkerEvent('info', 'Fetched pending deliveries (pre-hydration)', {
+    count: rawTasks.length,
+    limit,
+    teamId: options.teamId ?? null
+  });
+  const tasks = await hydratePendingDeliveryPersonalisation(client, rawTasks);
   logWorkerEvent('info', 'Fetched pending deliveries', {
     count: tasks.length,
     limit,
@@ -551,6 +621,16 @@ export async function runSequenceWorker(
   let skipped = 0;
 
   for (const task of tasks) {
+    logWorkerEvent('info', 'Processing pending delivery', {
+      contactId: task.contactId,
+      sequenceId: task.sequenceId,
+      statusId: task.statusId,
+      stepId: task.stepId,
+      scheduledAt: task.scheduledAt.toISOString(),
+      attempts: task.attempts,
+      sequenceStatus: task.sequenceStatus,
+      manualTriggeredAt: task.manualTriggeredAt
+    });
     syncWithSystemClock();
 
     const effectiveMinIntervalMinutes =
@@ -615,6 +695,13 @@ export async function runSequenceWorker(
           reason: 'status_changed'
         });
         skipped += 1;
+        logWorkerEvent('info', 'Skipping delivery due to status change', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId,
+          currentStatus: currentState?.status ?? null,
+          currentStepId: currentState?.stepId ?? null
+        });
         return;
       }
 
@@ -672,6 +759,12 @@ export async function runSequenceWorker(
           reason: 'sequence_not_active'
         });
         skipped += 1;
+        logWorkerEvent('info', 'Skipping delivery because sequence is not active', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId,
+          lifecycleStatus: sequenceLifecycle?.status ?? task.sequenceStatus
+        });
         return;
       }
 
@@ -700,6 +793,12 @@ export async function runSequenceWorker(
           attempts: priorAttempts + 1,
           reason: 'missing_step'
         });
+        logWorkerEvent('warn', 'Delivery failed due to missing step configuration', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId,
+          stepId: task.stepId
+        });
         return;
       }
 
@@ -717,6 +816,11 @@ export async function runSequenceWorker(
         skipped += 1;
         recordAudit('skipped', {
           reason: 'bounce_policy'
+        });
+        logWorkerEvent('info', 'Skipping delivery due to bounce policy', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId
         });
         return;
       }
@@ -736,6 +840,11 @@ export async function runSequenceWorker(
           skipped += 1;
           recordAudit('skipped', {
             reason: 'reply_policy'
+          });
+          logWorkerEvent('info', 'Skipping delivery due to reply stop policy', {
+            contactId: task.contactId,
+            sequenceId: task.sequenceId,
+            statusId: task.statusId
           });
           return;
         }
@@ -770,6 +879,12 @@ export async function runSequenceWorker(
               reason: 'reply_delay',
               rescheduledFor: target.toISOString()
             });
+            logWorkerEvent('info', 'Skipping delivery due to reply delay', {
+              contactId: task.contactId,
+              sequenceId: task.sequenceId,
+              statusId: task.statusId,
+              rescheduledFor: target.toISOString()
+            });
             return;
           }
         }
@@ -801,6 +916,13 @@ export async function runSequenceWorker(
           error: failureMessage
         });
         failed += 1;
+        logWorkerEvent('warn', 'Delivery failed due to sender configuration', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId,
+          senderId: senderSnapshot?.id ?? null,
+          senderStatus: senderSnapshot?.status ?? null
+        });
         return;
       }
 
@@ -814,6 +936,13 @@ export async function runSequenceWorker(
             error: error.message
           });
           skipped += 1;
+          logWorkerEvent('warn', 'Skipping delivery because plan limit reached', {
+            contactId: task.contactId,
+            sequenceId: task.sequenceId,
+            statusId: task.statusId,
+            teamId: task.teamId,
+            error: error.message
+          });
           return;
         }
         throw error;
@@ -828,11 +957,23 @@ export async function runSequenceWorker(
         password: senderSnapshot.password
       };
 
+      let contactEnsured = false;
+      let dispatchedMessageId: string | null = null;
+
       try {
         if (throttledForTask) {
           // Sync now if the send was throttled just before dispatch.
           now = new Date(nowMs);
         }
+
+        await ensureContactRecord(tx, task);
+        contactEnsured = true;
+        logWorkerEvent('info', 'Ensured contact record before sending', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId
+        });
+
         const rendered = renderSequenceContent(task.stepSubject ?? '', task.stepBody ?? '', {
           email: task.contactEmail,
           firstName: task.contactFirstName,
@@ -850,46 +991,81 @@ export async function runSequenceWorker(
           html: rendered.html,
           text: rendered.text
         });
-        await recordSuccess(tx, task, now, info.messageId ?? null, attemptNumber, {
+        dispatchedMessageId = info.messageId ?? null;
+        await recordSuccess(tx, task, now, dispatchedMessageId, attemptNumber, {
           lastSentAtMs,
-          globalMinSendIntervalMinutes
+          globalMinSendIntervalMinutes,
+          contactEnsured
         });
         await trackEmailsSent(task.teamId, 1, now, tx);
-        // lastSentAtMs updated only after success (set below after tracking)
-        recordAudit('sent', {
-          attempts: attemptNumber,
-          messageId: info.messageId ?? null,
-          reason: isManualOverride ? 'manual_send' : undefined
-        });
-        sent += 1;
-        lastSentAtMs = now.getTime();
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error while sending email';
+        const normalized = normalizeSendError(error);
+        const errorMessage = normalized.message;
         const result = await handleFailure(tx, task, now, errorMessage, priorAttempts, {
           allowRetry: !isManualOverride
         });
+        const outageReason = errorMessage === 'SMTP outage continues' ? errorMessage : undefined;
+
         if (result.retried) {
           recordAudit('retry', {
             attempts: attemptNumber,
-            reason: 'retryable_error',
-            error: errorMessage
+            reason: outageReason ?? 'retryable_error',
+            error: errorMessage,
+            rescheduledFor: result.nextAttemptAt ? result.nextAttemptAt.toISOString() : undefined
           });
           retried += 1;
-        } else {
-          recordAudit('failed', {
-            attempts: attemptNumber,
-            reason: isManualOverride ? 'manual_send_failure' : 'max_attempts_reached',
-            error: errorMessage
+          retryCounter.increment();
+          logWorkerEvent('warn', 'Delivery will be retried', {
+            contactId: task.contactId,
+            sequenceId: task.sequenceId,
+            statusId: task.statusId,
+            error: errorMessage,
+            errorCode: normalized.code ?? null,
+            rescheduledFor: result.nextAttemptAt ? result.nextAttemptAt.toISOString() : null
           });
-          failed += 1;
+          return;
         }
+
+        recordAudit('failed', {
+          attempts: attemptNumber,
+          reason: outageReason ?? (isManualOverride ? 'manual_send_failure' : 'max_attempts_reached'),
+          error: errorMessage
+        });
+        failed += 1;
+        errorCounter.increment();
+        logWorkerEvent('error', 'Delivery send failed', {
+          contactId: task.contactId,
+          sequenceId: task.sequenceId,
+          statusId: task.statusId,
+          error: errorMessage,
+          errorCode: normalized.code ?? null
+        });
+        return;
       }
+
+      recordAudit('sent', {
+        attempts: attemptNumber,
+        messageId: dispatchedMessageId,
+        reason: isManualOverride ? 'manual_send' : undefined
+      });
+      sent += 1;
+      sendCounter.increment();
+      lastSentAtMs = now.getTime();
+      logWorkerEvent('info', 'Delivery sent', {
+        contactId: task.contactId,
+        sequenceId: task.sequenceId,
+        statusId: task.statusId,
+        messageId: dispatchedMessageId,
+        manual: isManualOverride
+      });
     });
 
     syncWithSystemClock();
   }
 
   const durationMs = Date.now() - startedAt;
+
+  recordHeartbeat('sequence-worker');
 
   if (auditOverflow) {
     logWorkerEvent('warn', 'Worker audit entries truncated', { maxEntries: MAX_AUDIT_ENTRIES });
@@ -905,6 +1081,8 @@ export async function runSequenceWorker(
     teamId: options.teamId ?? null
   });
 
+  const resultDiagnostics = auditOverflow ? { pendingSequences: [] } : diagnostics;
+
   return {
     scanned: tasks.length,
     sent,
@@ -913,7 +1091,7 @@ export async function runSequenceWorker(
     skipped,
     durationMs,
     details: audits,
-    diagnostics
+    diagnostics: resultDiagnostics
   };
 }
 
@@ -1337,8 +1515,36 @@ async function recordSuccess(
   now: Date,
   messageId: string | null,
   attemptNumber: number,
-  options?: { lastSentAtMs?: number | null; globalMinSendIntervalMinutes?: number }
+  options?: { lastSentAtMs?: number | null; globalMinSendIntervalMinutes?: number; contactEnsured?: boolean }
 ) {
+  if (!options?.contactEnsured) {
+    await ensureContactRecord(tx, task);
+  }
+
+  const normalisedMessageId = normalizeMessageId(messageId);
+  const persistedMessageId = normalisedMessageId ?? generateFallbackMessageId(task.sequenceId);
+
+  if (!normalisedMessageId) {
+    const context = {
+      contactId: task.contactId,
+      sequenceId: task.sequenceId,
+      statusId: task.statusId
+    } as const;
+
+    if (messageId) {
+      logWorkerEvent('warn', 'Message-ID normalised for delivery log', {
+        ...context,
+        rawMessageId: messageId,
+        persistedMessageId
+      });
+    } else {
+      logWorkerEvent('warn', 'SMTP response missing Message-ID; generated fallback', {
+        ...context,
+        persistedMessageId
+      });
+    }
+  }
+
   const scheduleOptions = buildScheduleOptions(task);
   const fallbackTimezone = task.scheduleTimezone ?? task.scheduleFallbackTimezone ?? DEFAULT_FALLBACK_TIMEZONE;
   const isManual = task.manualTriggeredAt != null;
@@ -1350,10 +1556,19 @@ async function recordSuccess(
     stepId: task.stepId,
     statusId: task.statusId,
     status: deliveryStatus,
-    messageId,
+    type: 'send',
+    messageId: persistedMessageId,
     errorMessage: null,
     attempts: attemptNumber,
     skipReason: null,
+    payload: {
+      via: 'sequence-worker',
+      sequenceId: task.sequenceId,
+      contactId: task.contactId,
+      messageId: persistedMessageId,
+      rawMessageId: messageId ?? null,
+      normalised: Boolean(normalisedMessageId)
+    },
     createdAt: now
   });
 
@@ -1363,7 +1578,8 @@ async function recordSuccess(
     stepId: task.stepId,
     statusId: task.statusId,
     status: deliveryStatus,
-    messageId
+    messageId: persistedMessageId,
+    normalised: Boolean(normalisedMessageId)
   });
 
   const [nextStep] = await tx
@@ -1418,7 +1634,7 @@ async function recordSuccess(
     if (reason && delayedByMs > 0) {
       await recordStepDelay(tx, task, now, {
         delayMs: delayedByMs,
-  stepDelayHours: stepDelayHoursUsed,
+        stepDelayHours: stepDelayHoursUsed,
         effectiveMinIntervalMinutes: effectiveMinIntervalMinutes,
         rescheduledFor: scheduleAt,
         reason: reason === 'min_gap' ? 'min_gap' : 'step_delay'
@@ -1449,6 +1665,86 @@ async function recordSuccess(
   }
 }
 
+async function ensureContactRecord(tx: any, task: PendingDelivery): Promise<void> {
+  const [statusRow] = await tx
+    .select({
+      id: contactSequenceStatus.id,
+      contactId: contactSequenceStatus.contactId,
+      sequenceId: contactSequenceStatus.sequenceId
+    })
+    .from(contactSequenceStatus)
+    .where(eq(contactSequenceStatus.id, task.statusId))
+    .limit(1);
+
+  if (!statusRow) {
+    logWorkerEvent('warn', 'Contact sequence status missing during ensureContactRecord', {
+      contactId: task.contactId,
+      sequenceId: task.sequenceId,
+      statusId: task.statusId
+    });
+  }
+
+  if (statusRow && statusRow.sequenceId !== task.sequenceId) {
+    logWorkerEvent('warn', 'Sequence mismatch when ensuring contact record', {
+      contactId: task.contactId,
+      expectedSequenceId: task.sequenceId,
+      statusSequenceId: statusRow.sequenceId,
+      statusId: task.statusId
+    });
+  }
+
+  if (statusRow && statusRow.contactId !== task.contactId) {
+    logWorkerEvent('warn', 'Status contactId mismatch resolved in ensureContactRecord', {
+      expectedContactId: task.contactId,
+      statusContactId: statusRow.contactId,
+      statusId: task.statusId
+    });
+    task.contactId = statusRow.contactId;
+  }
+
+  const targetContactId = statusRow?.contactId ?? task.contactId;
+
+  const [existing] = await tx
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(eq(contacts.id, targetContactId))
+    .limit(1);
+
+  if (existing) {
+    task.contactId = existing.id;
+    return;
+  }
+
+  const firstName = task.contactFirstName?.trim() || 'Prospect';
+  const lastName = task.contactLastName?.trim() || 'Contact';
+  const email = task.contactEmail.trim().toLowerCase();
+  const company = task.contactCompany?.trim() || 'Unknown';
+
+  await tx
+    .insert(contacts)
+    .values({
+      id: targetContactId,
+      teamId: task.teamId,
+      firstName,
+      lastName,
+      email,
+      company,
+      timezone: task.contactTimezone,
+      tags: Array.isArray(task.contactTags) ? task.contactTags : []
+    })
+    .onConflictDoNothing({
+      target: [contacts.teamId, contacts.email]
+    });
+
+  task.contactId = targetContactId;
+
+  logWorkerEvent('info', 'Created contact record for delivery', {
+    contactId: task.contactId,
+    sequenceId: task.sequenceId,
+    statusId: task.statusId
+  });
+}
+
 async function handleFailure(
   tx: any,
   task: PendingDelivery,
@@ -1456,7 +1752,7 @@ async function handleFailure(
   error: string,
   previousAttempts: number,
   options: { allowRetry?: boolean } = {}
-) {
+) : Promise<{ retried: boolean; nextAttemptAt: Date | null }> {
   const attemptNumber = previousAttempts + 1;
   const isManual = task.manualTriggeredAt != null;
   const allowRetry = options.allowRetry !== false;
@@ -1466,6 +1762,8 @@ async function handleFailure(
     : shouldRetry
       ? 'retrying'
       : 'failed';
+
+  let nextAttemptAt: Date | null = null;
 
   await tx.insert(deliveryLogs).values({
     contactId: task.contactId,
@@ -1482,6 +1780,7 @@ async function handleFailure(
 
   if (shouldRetry) {
     const retryAt = new Date(now.getTime() + RETRY_DELAY_MINUTES * 60 * 1000);
+    nextAttemptAt = retryAt;
     await tx
       .update(contactSequenceStatus)
       .set({
@@ -1506,5 +1805,5 @@ async function handleFailure(
       .where(eq(contactSequenceStatus.id, task.statusId));
   }
 
-  return { retried: shouldRetry };
+  return { retried: shouldRetry, nextAttemptAt };
 }

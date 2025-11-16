@@ -2,7 +2,7 @@ import { ImapFlow } from 'imapflow';
 import type { ParsedMail } from 'mailparser';
 import { simpleParser } from 'mailparser';
 import Poplib from 'poplib';
-import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/lib/db/drizzle';
 import {
@@ -15,6 +15,7 @@ import {
   type SenderStatus
 } from '@/lib/db/schema';
 import { decryptSecret, isProbablyEncryptedSecret } from '@/lib/security/encryption';
+import { normalizeMessageId, normalizeMessageIdList } from '@/lib/mail/message-id';
 
 export type SenderSecurity = 'SSL/TLS' | 'STARTTLS' | 'None';
 export type InboundProtocol = 'IMAP' | 'POP3';
@@ -53,6 +54,18 @@ type ReplyLogPayload = {
   via: 'reply-detection-worker';
   messageId?: string | null;
   senderId: number;
+  deliveryLogId?: string | null;
+};
+
+type DeliveryLogRecord = {
+  id: string;
+  sequenceId: string;
+  statusId: string | null;
+  messageId: string | null;
+  stepId: string | null;
+  sequenceStatus: string;
+  sequenceDeletedAt: Date | null;
+  contact: ContactRecord;
 };
 
 export type InboundMessage = {
@@ -75,19 +88,22 @@ export type ReplyDetectionMetrics = {
 
 export type RecordReplyResult = {
   recorded: boolean;
-  deliveryLogId?: string | null;
+  statusUpdated: boolean;
+  deliveryLogId: string | null;
 };
 
 export type ReplyDetectionRepository = {
   listEligibleSenders(): Promise<SenderWithInbound[]>;
   findContactByEmail(teamId: number, email: string): Promise<ContactRecord | null>;
-  findActiveSequenceStatuses(contactId: string): Promise<SequenceStatusRecord[]>;
-  findDeliveryLogIdByMessageId(messageId: string): Promise<string | null>;
+  findContactById(contactId: string): Promise<ContactRecord | null>;
+  findActiveSequenceStatuses(contactId: string, options?: { sequenceIds?: string[] }): Promise<SequenceStatusRecord[]>;
+  findDeliveryLogsByMessageIds(messageIds: string[]): Promise<DeliveryLogRecord[]>;
   recordReply(params: {
     status: SequenceStatusRecord;
     contact: ContactRecord;
     sender: SenderWithInbound;
     message: InboundMessage;
+    deliveryLogId?: string | null;
   }): Promise<RecordReplyResult>;
 };
 
@@ -250,12 +266,15 @@ class ImapMailClient implements MailClient {
   async connect(): Promise<void> {
     const secure = this.sender.inboundSecurity === 'SSL/TLS';
     const useStartTls = this.sender.inboundSecurity === 'STARTTLS';
+    const socketTimeoutEnv = Number.parseInt(process.env.IMAP_SOCKET_TIMEOUT_MS ?? '', 10);
+    const socketTimeout = Number.isFinite(socketTimeoutEnv) && socketTimeoutEnv > 0 ? socketTimeoutEnv : 60000;
 
     this.client = new ImapFlow({
       host: this.sender.inboundHost,
       port: this.sender.inboundPort,
       secure,
       logger: false,
+      socketTimeout,
       auth: {
         user: this.sender.username,
         pass: this.sender.password
@@ -582,7 +601,32 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
     return contact ?? null;
   }
 
-  async findActiveSequenceStatuses(contactId: string): Promise<SequenceStatusRecord[]> {
+  async findContactById(contactId: string): Promise<ContactRecord | null> {
+    const [contact] = await db
+      .select({ id: contacts.id, teamId: contacts.teamId, email: contacts.email })
+      .from(contacts)
+      .where(eq(contacts.id, contactId))
+      .limit(1);
+
+    return contact ?? null;
+  }
+
+  async findActiveSequenceStatuses(
+    contactId: string,
+    options?: { sequenceIds?: string[] }
+  ): Promise<SequenceStatusRecord[]> {
+    const filters = [
+      eq(contactSequenceStatus.contactId, contactId),
+      eq(sequences.status, 'active'),
+      isNull(sequences.deletedAt)
+    ];
+
+    if (options?.sequenceIds && options.sequenceIds.length > 0) {
+      filters.push(inArray(contactSequenceStatus.sequenceId, options.sequenceIds));
+    }
+
+    const whereClause = filters.length === 1 ? filters[0] : and(...filters);
+
     return await db
       .select({
         id: contactSequenceStatus.id,
@@ -592,26 +636,48 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
       })
       .from(contactSequenceStatus)
       .innerJoin(sequences, eq(contactSequenceStatus.sequenceId, sequences.id))
-      .where(
-        and(
-          eq(contactSequenceStatus.contactId, contactId),
-          eq(sequences.status, 'active')
-        )
-      );
+      .where(whereClause);
   }
 
-  async findDeliveryLogIdByMessageId(messageId: string): Promise<string | null> {
-    if (!messageId) {
-      return null;
+  async findDeliveryLogsByMessageIds(messageIds: string[]): Promise<DeliveryLogRecord[]> {
+    const candidates = normalizeMessageIdList(messageIds);
+    if (candidates.length === 0) {
+      return [];
     }
 
-    const [log] = await db
-      .select({ id: deliveryLogs.id })
+    const rows = await db
+      .select({
+        id: deliveryLogs.id,
+        sequenceId: deliveryLogs.sequenceId,
+        statusId: deliveryLogs.statusId,
+        messageId: deliveryLogs.messageId,
+        stepId: deliveryLogs.stepId,
+        sequenceStatus: sequences.status,
+        sequenceDeletedAt: sequences.deletedAt,
+        contactId: contacts.id,
+        contactTeamId: contacts.teamId,
+        contactEmail: contacts.email
+      })
       .from(deliveryLogs)
-      .where(eq(deliveryLogs.messageId, messageId))
-      .limit(1);
+      .innerJoin(contacts, eq(deliveryLogs.contactId, contacts.id))
+      .innerJoin(sequences, eq(deliveryLogs.sequenceId, sequences.id))
+      .where(and(inArray(deliveryLogs.messageId, candidates), inArray(deliveryLogs.type, ['send', 'manual_send'])))
+      .orderBy(desc(deliveryLogs.createdAt));
 
-    return log?.id ?? null;
+    return rows.map((row) => ({
+      id: row.id,
+      sequenceId: row.sequenceId,
+      statusId: row.statusId,
+      messageId: row.messageId,
+      stepId: row.stepId,
+      sequenceStatus: row.sequenceStatus,
+      sequenceDeletedAt: row.sequenceDeletedAt,
+      contact: {
+        id: row.contactId,
+        teamId: row.contactTeamId,
+        email: row.contactEmail
+      }
+    } satisfies DeliveryLogRecord));
   }
 
   async recordReply(params: {
@@ -619,8 +685,12 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
     contact: ContactRecord;
     sender: SenderWithInbound;
     message: InboundMessage;
+    deliveryLogId?: string | null;
   }): Promise<RecordReplyResult> {
     const replyAt = params.message.receivedAt ?? new Date();
+    const inboundCandidates = normalizeMessageIdList([params.message.messageId]);
+    const inboundMessageId = normalizeMessageId(params.message.messageId) ?? inboundCandidates[0] ?? null;
+    const resolvedDeliveryLogId = params.deliveryLogId ?? null;
 
     return await db.transaction(async (tx) => {
       const [currentStatus] = await tx
@@ -634,27 +704,11 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
         .limit(1);
 
       if (!currentStatus) {
-        return { recorded: false };
+        return { recorded: false, statusUpdated: false, deliveryLogId: resolvedDeliveryLogId };
       }
 
       if (currentStatus.status === 'replied' && currentStatus.replyAt) {
-        return { recorded: false };
-      }
-
-      if (params.message.messageId) {
-        const [existingLog] = await tx
-          .select({ id: deliveryLogs.id })
-          .from(deliveryLogs)
-          .where(eq(deliveryLogs.messageId, params.message.messageId))
-          .limit(1);
-
-        if (existingLog) {
-          await tx
-            .update(contactSequenceStatus)
-            .set({ status: 'replied', replyAt, lastUpdated: new Date() })
-            .where(eq(contactSequenceStatus.id, params.status.id));
-          return { recorded: false, deliveryLogId: existingLog.id };
-        }
+        return { recorded: false, statusUpdated: false, deliveryLogId: resolvedDeliveryLogId };
       }
 
       let stepId = params.status.stepId;
@@ -669,13 +723,16 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
       }
 
       if (!stepId) {
-        return { recorded: false };
+        return { recorded: false, statusUpdated: false, deliveryLogId: resolvedDeliveryLogId };
       }
 
-      await tx
+      const [updatedStatus] = await tx
         .update(contactSequenceStatus)
         .set({ status: 'replied', replyAt, lastUpdated: new Date() })
-        .where(eq(contactSequenceStatus.id, params.status.id));
+        .where(eq(contactSequenceStatus.id, params.status.id))
+        .returning({ id: contactSequenceStatus.id });
+
+      const statusUpdated = Boolean(updatedStatus?.id);
 
       const payload: ReplyLogPayload = {
         inReplyTo: params.message.inReplyTo,
@@ -683,25 +740,55 @@ class DrizzleReplyDetectionRepository implements ReplyDetectionRepository {
         subject: params.message.subject,
         via: 'reply-detection-worker',
         messageId: params.message.messageId,
-        senderId: params.sender.id
+        senderId: params.sender.id,
+        deliveryLogId: resolvedDeliveryLogId
       };
 
-      const [inserted] = await tx
-        .insert(deliveryLogs)
-        .values({
-        contactId: params.contact.id,
-        sequenceId: params.status.sequenceId,
-        stepId,
-        statusId: params.status.id,
-        status: 'replied',
-        type: 'reply',
-        messageId: params.message.messageId,
-        payload,
-        attempts: 0
-        })
-        .returning({ id: deliveryLogs.id });
+      if (resolvedDeliveryLogId) {
+        await tx
+          .update(deliveryLogs)
+          .set({ status: 'replied' })
+          .where(eq(deliveryLogs.id, resolvedDeliveryLogId));
+      }
 
-      return { recorded: true, deliveryLogId: inserted?.id ?? null };
+      let deliveryLogId = resolvedDeliveryLogId ?? null;
+      let recorded = false;
+
+      if (inboundCandidates.length > 0) {
+        const [existingReplyLog] = await tx
+          .select({ id: deliveryLogs.id })
+          .from(deliveryLogs)
+          .where(inArray(deliveryLogs.messageId, inboundCandidates))
+          .limit(1);
+
+        if (existingReplyLog) {
+          deliveryLogId = existingReplyLog.id;
+        }
+      }
+
+      if (!deliveryLogId) {
+        const [inserted] = await tx
+          .insert(deliveryLogs)
+          .values({
+            contactId: params.contact.id,
+            sequenceId: params.status.sequenceId,
+            stepId,
+            statusId: params.status.id,
+            status: 'replied',
+            type: 'reply',
+            messageId: inboundMessageId,
+            payload,
+            attempts: 0
+          })
+          .returning({ id: deliveryLogs.id });
+
+        if (inserted?.id) {
+          deliveryLogId = inserted.id;
+          recorded = true;
+        }
+      }
+
+      return { recorded, statusUpdated, deliveryLogId };
     });
   }
 }
@@ -794,27 +881,89 @@ export async function runReplyDetectionWorker(
         let matched = false;
         let ignoreReason: string | null = null;
         const fromAddress = extractEmailAddress(message.fromAddress);
+        const normalizedMessageId = normalizeMessageId(message.messageId);
+        const metadataCandidates = normalizeMessageIdList([
+          message.inReplyTo,
+          ...(message.references ?? [])
+        ]);
+        const metadataAvailable = metadataCandidates.length > 0;
+        let contactLookupAttempted = false;
+        let metadataMatches: DeliveryLogRecord[] = [];
+        let deliveryLogMatch: DeliveryLogRecord | null = null;
+        let contact: ContactRecord | null = null;
 
         if (!fromAddress) {
           ignoreReason = 'missing-from-address';
-          emitDebug('message-ignored', {
-            senderId: sender.id,
-            internalId: message.internalId,
-            reason: ignoreReason
-          });
         }
 
-        let contact: ContactRecord | null = null;
-
-        if (!ignoreReason) {
+        if (!ignoreReason && metadataAvailable) {
           try {
-            contact = await repository.findContactByEmail(sender.teamId, fromAddress!);
+            metadataMatches = await repository.findDeliveryLogsByMessageIds(metadataCandidates);
+          } catch (error) {
+            senderMetrics.errors += 1;
+            ignoreReason = 'delivery-log-lookup-error';
+            log.error?.('[ReplyDetectionWorker] Delivery log lookup failed', {
+              senderId: sender.id,
+              candidates: metadataCandidates,
+              error
+            });
+          }
+        }
+
+        const teamMatches = !ignoreReason
+          ? metadataMatches.filter((entry) => entry.contact.teamId === sender.teamId)
+          : [];
+
+        emitDebug('metadata-match', {
+          senderId: sender.id,
+          internalId: message.internalId,
+          metadataAvailable,
+          candidates: metadataCandidates,
+          matchCount: teamMatches.length,
+          deliveryLogIds: teamMatches.map((entry) => entry.id)
+        });
+
+        if (!ignoreReason && teamMatches.length > 0) {
+          const uniqueSequences = Array.from(new Set(teamMatches.map((entry) => entry.sequenceId)));
+
+          if (uniqueSequences.length > 1) {
+            ignoreReason = 'ambiguous-sequence';
+          } else {
+            const candidateLog = teamMatches[0];
+
+            if (candidateLog.sequenceDeletedAt) {
+              ignoreReason = 'sequence-deleted';
+            } else if (candidateLog.sequenceStatus !== 'active') {
+              ignoreReason = 'sequence-inactive';
+            } else {
+              deliveryLogMatch = candidateLog;
+              contact = candidateLog.contact;
+              emitDebug('delivery-log-selected', {
+                senderId: sender.id,
+                internalId: message.internalId,
+                deliveryLogId: deliveryLogMatch.id,
+                contactId: deliveryLogMatch.contact.id,
+                sequenceId: deliveryLogMatch.sequenceId
+              });
+            }
+          }
+        } else if (!ignoreReason && metadataAvailable && metadataMatches.length > 0 && teamMatches.length === 0) {
+          ignoreReason = 'contact-team-mismatch';
+        }
+
+        const allowFallbackToEmail = !metadataAvailable;
+
+        if (!ignoreReason && !deliveryLogMatch && allowFallbackToEmail && fromAddress) {
+          try {
+            contactLookupAttempted = true;
+            contact = await repository.findContactByEmail(sender.teamId, fromAddress);
             emitDebug('contact-lookup', {
               senderId: sender.id,
               internalId: message.internalId,
               from: fromAddress,
               matched: Boolean(contact),
-              contactId: contact?.id ?? null
+              contactId: contact?.id ?? null,
+              via: 'email'
             });
           } catch (error) {
             senderMetrics.errors += 1;
@@ -827,46 +976,27 @@ export async function runReplyDetectionWorker(
           }
         }
 
-        if (!ignoreReason && !contact) {
-          ignoreReason = 'unknown-contact';
-          emitDebug('message-ignored', {
-            senderId: sender.id,
-            internalId: message.internalId,
-            from: fromAddress,
-            reason: ignoreReason
-          });
+        if (!ignoreReason && contact && contact.teamId !== sender.teamId) {
+          ignoreReason = 'contact-team-mismatch';
+          contact = null;
         }
 
-        let outboundMatch: { messageId: string; deliveryLogId: string } | null = null;
-        const outboundCandidates = Array.from(
-          new Set(
-            [message.inReplyTo, ...(message.references ?? [])].filter(
-              (candidate): candidate is string => Boolean(candidate)
-            )
-          )
-        );
-
-        if (outboundCandidates.length > 0) {
-          for (const candidate of outboundCandidates) {
-            const deliveryLogId = await repository.findDeliveryLogIdByMessageId(candidate);
-            if (deliveryLogId) {
-              outboundMatch = { messageId: candidate, deliveryLogId };
-              break;
-            }
+        if (!ignoreReason && !contact) {
+          if (deliveryLogMatch) {
+            ignoreReason = 'contact-missing-for-message';
+          } else if (metadataAvailable && !contactLookupAttempted) {
+            ignoreReason = 'delivery-log-not-found';
+          } else {
+            ignoreReason = 'unknown-contact';
           }
         }
 
-        emitDebug('outbound-match-check', {
-          senderId: sender.id,
-          internalId: message.internalId,
-          candidates: outboundCandidates,
-          matched: Boolean(outboundMatch),
-          matchedMessageId: outboundMatch?.messageId ?? null,
-          deliveryLogId: outboundMatch?.deliveryLogId ?? null
-        });
-
         if (!ignoreReason && contact) {
-          const statuses = await repository.findActiveSequenceStatuses(contact.id);
+          const sequenceFilter = deliveryLogMatch ? [deliveryLogMatch.sequenceId] : undefined;
+          const statuses = await repository.findActiveSequenceStatuses(contact.id, {
+            sequenceIds: sequenceFilter
+          });
+
           emitDebug('sequence-status-check', {
             senderId: sender.id,
             internalId: message.internalId,
@@ -875,22 +1005,42 @@ export async function runReplyDetectionWorker(
             sequenceIds: statuses.map((status) => status.sequenceId)
           });
 
-          if (!statuses.length) {
-            ignoreReason = 'not-enrolled';
-            emitDebug('message-ignored', {
-              senderId: sender.id,
-              internalId: message.internalId,
-              from: fromAddress,
-              reason: ignoreReason
-            });
+          const nonRepliedStatuses = statuses.filter((status) => status.status !== 'replied');
+          const candidateStatuses = (() => {
+            if (deliveryLogMatch) {
+              return nonRepliedStatuses.filter(
+                (status) => status.sequenceId === deliveryLogMatch!.sequenceId
+              );
+            }
+
+            if (nonRepliedStatuses.length === 1) {
+              return nonRepliedStatuses;
+            }
+
+            return [] as SequenceStatusRecord[];
+          })();
+
+          if (!candidateStatuses.length) {
+            ignoreReason = deliveryLogMatch
+              ? 'sequence-inactive'
+              : nonRepliedStatuses.length > 1
+                ? 'ambiguous-sequence'
+                : 'not-enrolled';
           } else {
-            for (const status of statuses) {
+            const inboundMessage: InboundMessage = {
+              ...message,
+              messageId: normalizedMessageId ?? message.messageId,
+              references: message.references
+            };
+
+            for (const status of candidateStatuses) {
               try {
                 const recordResult = await repository.recordReply({
                   status,
                   contact,
                   sender,
-                  message
+                  message: inboundMessage,
+                  deliveryLogId: deliveryLogMatch?.id ?? null
                 });
 
                 emitDebug('record-reply', {
@@ -900,19 +1050,23 @@ export async function runReplyDetectionWorker(
                   sequenceId: status.sequenceId,
                   statusId: status.id,
                   recorded: recordResult.recorded,
-                  deliveryLogId: recordResult.deliveryLogId ?? outboundMatch?.deliveryLogId ?? null
+                  statusUpdated: recordResult.statusUpdated,
+                  deliveryLogId: recordResult.deliveryLogId
                 });
 
-                if (recordResult.recorded) {
+                if (recordResult.statusUpdated) {
                   matched = true;
-                  emitDebug('message-matched', {
+                  log.info?.('[ReplyDetectionWorker] Reply matched', {
                     senderId: sender.id,
-                    internalId: message.internalId,
                     contactId: contact.id,
                     sequenceId: status.sequenceId,
-                    deliveryLogId: recordResult.deliveryLogId ?? null
+                    statusId: status.id,
+                    deliveryLogId: recordResult.deliveryLogId,
+                    messageId: inboundMessage.messageId ?? null
                   });
+                  break;
                 }
+
                 if (!recordResult.recorded && recordResult.deliveryLogId && !ignoreReason) {
                   ignoreReason = 'duplicate-message-id';
                 }
@@ -941,7 +1095,19 @@ export async function runReplyDetectionWorker(
             senderId: sender.id,
             internalId: message.internalId,
             from: fromAddress,
-            reason
+            reason,
+            contactId: contact?.id ?? deliveryLogMatch?.contact.id ?? null,
+            sequenceId: deliveryLogMatch?.sequenceId ?? null,
+            deliveryLogId: deliveryLogMatch?.id ?? null
+          });
+          log.info?.('[ReplyDetectionWorker] Reply ignored', {
+            senderId: sender.id,
+            from: fromAddress,
+            reason,
+            internalId: message.internalId,
+            deliveryLogId: deliveryLogMatch?.id ?? null,
+            contactId: contact?.id ?? deliveryLogMatch?.contact.id ?? null,
+            sequenceId: deliveryLogMatch?.sequenceId ?? null
           });
         }
 

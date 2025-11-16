@@ -1,0 +1,73 @@
+version: '3.9'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: outcraftly-web:latest
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+    ports:
+      - '3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  sequence-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: outcraftly-sequence-worker:latest
+    command: ['pnpm', 'worker:run']
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+
+  reply-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: outcraftly-reply-worker:latest
+    command: ['pnpm', 'reply:run']
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      IMAP_PASSWORD: ${IMAP_PASSWORD}
+
+  postgres:
+    image: postgres:16.4-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

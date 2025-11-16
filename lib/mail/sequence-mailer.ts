@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import nodemailer from 'nodemailer';
 
 import { renderTemplate, type ContactRecord } from '@/lib/sequence/sequence-engine';
+import { executeWithResilience } from '@/lib/services/resilience';
 
 export type SequencePersonalisationInput = {
   email: string;
@@ -113,56 +115,75 @@ export async function dispatchSequenceEmail({
   rejected: string[];
   response: string | null;
 }> {
-  const transporter = nodemailer.createTransport({
-    host: sender.host,
-    port: sender.port,
-    secure: sender.port === 465,
-    auth: {
-      user: sender.username,
-      pass: sender.password
+  const senderDomain = typeof sender.email === 'string' && sender.email.includes('@')
+    ? sender.email.split('@')[1]
+    : 'outcraftly.mail';
+  const generatedMessageId = `${randomUUID()}@${senderDomain}`;
+
+  return await executeWithResilience(
+    'smtp_send',
+    async () => {
+      const transporter = nodemailer.createTransport({
+        host: sender.host,
+        port: sender.port,
+        secure: sender.port === 465,
+        auth: {
+          user: sender.username,
+          pass: sender.password
+        }
+      });
+
+      try {
+        if (shouldVerify) {
+          await transporter.verify();
+        }
+
+        const info = await transporter.sendMail({
+          from: `${sender.name} <${sender.email}>`,
+          to: recipient,
+          subject,
+          html,
+          text,
+          messageId: generatedMessageId,
+          headers: isTest ? { 'X-Outcraftly-Test': 'true' } : undefined
+        });
+
+        const accepted = Array.isArray(info?.accepted)
+          ? info.accepted.map((address) => address.toString())
+          : [];
+        const rejected = Array.isArray(info?.rejected)
+          ? info.rejected.map((address) => address.toString())
+          : [];
+        const response = typeof info?.response === 'string' ? info.response : null;
+
+        if (accepted.length === 0) {
+          const deliveryError = new Error('SMTP server did not accept any recipients');
+          (deliveryError as any).code = 'ENOTACCEPTED';
+          (deliveryError as any).accepted = accepted;
+          (deliveryError as any).rejected = rejected;
+          (deliveryError as any).response = response;
+          throw deliveryError;
+        }
+
+        return {
+          messageId: info?.messageId ?? `<${generatedMessageId}>`,
+          accepted,
+          rejected,
+          response
+        };
+      } finally {
+        if (typeof transporter.close === 'function') {
+          transporter.close();
+        }
+      }
+    },
+    {
+      breakerKey: `smtp:${sender.host}`,
+      timeoutMs: 15000,
+      baseDelayMs: 500,
+      retries: 0,
+      breakerThreshold: 5,
+      breakerResetMs: 120000
     }
-  });
-
-  try {
-    if (shouldVerify) {
-      await transporter.verify();
-    }
-
-    const info = await transporter.sendMail({
-      from: `${sender.name} <${sender.email}>`,
-      to: recipient,
-      subject,
-      html,
-      text,
-      headers: isTest ? { 'X-Outcraftly-Test': 'true' } : undefined
-    });
-
-    const accepted = Array.isArray(info?.accepted)
-      ? info.accepted.map((address) => address.toString())
-      : [];
-    const rejected = Array.isArray(info?.rejected)
-      ? info.rejected.map((address) => address.toString())
-      : [];
-    const response = typeof info?.response === 'string' ? info.response : null;
-
-    if (accepted.length === 0) {
-      const deliveryError = new Error('SMTP server did not accept any recipients');
-      (deliveryError as any).code = 'ENOTACCEPTED';
-      (deliveryError as any).accepted = accepted;
-      (deliveryError as any).rejected = rejected;
-      (deliveryError as any).response = response;
-      throw deliveryError;
-    }
-
-    return {
-      messageId: info?.messageId ?? null,
-      accepted,
-      rejected,
-      response
-    };
-  } finally {
-    if (typeof transporter.close === 'function') {
-      transporter.close();
-    }
-  }
+  );
 }

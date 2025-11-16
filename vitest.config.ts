@@ -15,7 +15,10 @@ export default defineConfig({
     environmentMatchGlobs: [
       ['**/*.test.tsx', 'jsdom']
     ],
-    css: false
+    css: false,
+    typecheck: {
+      tsconfig: './tsconfig.test.json'
+    }
   },
   esbuild: {
     jsx: 'automatic',

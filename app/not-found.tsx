@@ -1,12 +1,17 @@
 import Link from 'next/link';
-import { CircleIcon } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 export default function NotFound() {
   return (
     <div className="flex items-center justify-center min-h-[100dvh]">
       <div className="max-w-md space-y-8 p-4 text-center">
         <div className="flex justify-center">
-          <CircleIcon className="size-12 text-orange-500" />
+          <div className="size-12 rounded-full bg-orange-500/10 text-orange-500 flex items-center justify-center text-2xl font-semibold">
+            !
+          </div>
         </div>
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
           Page Not Found
