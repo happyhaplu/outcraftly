@@ -39,3 +39,30 @@ next-env.d.ts
 # Docker
 postgres_data/
 .env*.local
+
+# Build logs and debug files
+*.log
+build-*.log
+build.log
+build-trace.log
+build-debug.log
+pnpm-debug.log*
+
+# Todo and temporary files
+.todo
+.todo.*
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Build logs and debug files
+*.log
+build-*.log
+pnpm-debug.log*
+
+# Todo and temporary files
+.todo
+.todo.*
