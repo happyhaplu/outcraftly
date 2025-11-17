@@ -1,5 +1,12 @@
 name: Deploy
 
+# Required secrets:
+# - GHCR_USERNAME: GitHub Container Registry username
+# - GHCR_TOKEN: GitHub Container Registry token (PAT with packages permissions)
+# - DEPLOY_HOST: Production server IP address
+# - DEPLOY_USER: SSH username for production server
+# - DEPLOY_KEY: SSH private key for production server
+
 on:
   push:
     branches:
