@@ -68,127 +68,218 @@
     {
       "idx": 9,
       "version": "7",
+      "when": 1760755200000,
+      "tag": "0009_reply_bounce_support",
+      "breakpoints": false
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1760841600000,
+      "tag": "0010_delivery_logs_update",
+      "breakpoints": false
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1760928000000,
+      "tag": "0011_sequence_conditions",
+      "breakpoints": false
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1761014400000,
+      "tag": "0012_add_sequence_status_indexes",
+      "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1761100800000,
+      "tag": "0013_add_contact_sequence_skipped",
+      "breakpoints": false
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1761187200000,
+      "tag": "0014_sequence_timezone_support",
+      "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1761273600000,
+      "tag": "0015_sequence_schedule_options",
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1761360000000,
+      "tag": "0016_ensure_timezone_columns",
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1761446400000,
+      "tag": "0017_sequence_status_column",
+      "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1761532800000,
+      "tag": "0018_sequence_sender_assignment",
+      "breakpoints": false
+    },
+    {
+      "idx": 19,
+      "version": "7",
       "when": 1760715657133,
       "tag": "manual_0008_sequence_worker_support",
       "breakpoints": false
     },
     {
-      "idx": 10,
+      "idx": 20,
       "version": "7",
       "when": 1771603200000,
       "tag": "144195cddf845f10a1c1a3125b3285175b264964ce850d68c4a7272fbd8a7b2d",
       "breakpoints": false
     },
     {
-      "idx": 11,
+      "idx": 21,
       "version": "7",
       "when": 1761028153000,
       "tag": "manual_0018_sequence_sender_assignment",
       "breakpoints": false
     },
     {
-      "idx": 12,
+      "idx": 22,
       "version": "7",
       "when": 1766515200000,
       "tag": "0019_add_sequence_draft_status",
       "breakpoints": false
     },
     {
-      "idx": 13,
+      "idx": 23,
       "version": "7",
       "when": 1766601600000,
       "tag": "0020_add_sequence_launch_at",
       "breakpoints": false
     },
     {
-      "idx": 14,
+      "idx": 24,
       "version": "7",
       "when": 1766688000000,
       "tag": "2025-10-24-0001-add-sequence-draft",
       "breakpoints": false
     },
     {
-      "idx": 15,
+      "idx": 25,
       "version": "7",
       "when": 1766774400000,
       "tag": "2025-10-24-0002-sequence-wizard-fields",
       "breakpoints": false
     },
     {
-      "idx": 16,
+      "idx": 26,
       "version": "7",
       "when": 1766860800000,
       "tag": "2025-10-25-0001-delivery-logs-skipped",
       "breakpoints": false
     },
     {
-      "idx": 17,
+      "idx": 27,
       "version": "7",
       "when": 1766947200000,
       "tag": "2025-10-26-0001-delivery-logs-delayed",
       "breakpoints": false
     },
     {
-      "idx": 18,
+      "idx": 28,
       "version": "7",
       "when": 1766948100000,
       "tag": "2025-10-26-0002-sequences-min-gap",
       "breakpoints": false
     },
     {
-      "idx": 19,
+      "idx": 29,
       "version": "7",
       "when": 1766952000000,
       "tag": "2025-10-26-0003-sequence-advanced-timezone",
       "breakpoints": false
     },
     {
-      "idx": 20,
+      "idx": 30,
       "version": "7",
       "when": 1767033600000,
       "tag": "2025-10-27-0001-users-role-admin",
       "breakpoints": false
     },
     {
-      "idx": 21,
+      "idx": 31,
       "version": "7",
       "when": 1767037200000,
       "tag": "2025-10-27-0002-users-account-metadata",
       "breakpoints": false
     },
     {
-      "idx": 22,
+      "idx": 32,
       "version": "7",
       "when": 1767129600000,
       "tag": "2025-10-28-0001-plan-usage",
       "breakpoints": false
     },
     {
-      "idx": 23,
+      "idx": 33,
       "version": "7",
       "when": 1767133200000,
       "tag": "2025-10-28-0002-plans-table",
       "breakpoints": false
     },
     {
-      "idx": 24,
+      "idx": 34,
       "version": "7",
       "when": 1767219600000,
       "tag": "2025-10-29-0001-team-payment-status",
       "breakpoints": false
     },
     {
-      "idx": 25,
+      "idx": 35,
       "version": "7",
       "when": 1767398400000,
       "tag": "2025-11-01-0001-contact-custom-fields",
       "breakpoints": false
     },
     {
-      "idx": 26,
+      "idx": 36,
       "version": "7",
       "when": 1767484800000,
       "tag": "2025-11-02-0001-contacts-job-title",
+      "breakpoints": false
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1732040400000,
+      "tag": "2025-11-09-0001-senders-inbound",
+      "breakpoints": false
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1732126800000,
+      "tag": "2025-11-10-0001-senders-inbound-updates",
+      "breakpoints": false
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1732127700000,
+      "tag": "2025-11-10-0002-delivery-logs-reply-status",
       "breakpoints": false
     }
   ]
