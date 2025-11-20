@@ -12,7 +12,11 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
+    "test:unit": "vitest run tests/",
+    "test:integration": "vitest run tests/",
+    "test:e2e": "vitest run app/",
     "test:ci": "vitest run --reporter=dot --coverage",
+    "test:watch": "vitest",
     "worker:run": "tsx scripts/run-sequence-worker.ts",
     "trial:expire": "tsx scripts/expire-trial-users.ts",
     "reply:run": "tsx scripts/run-reply-worker.ts"
