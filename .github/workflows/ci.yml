@@ -50,8 +50,19 @@ jobs:
       - name: Setup database
         run: pnpm db:setup:ci
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Build
         run: pnpm build
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: pnpm test:ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
