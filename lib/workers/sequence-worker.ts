@@ -26,7 +26,7 @@ import { generateFallbackMessageId, normalizeMessageId } from '@/lib/mail/messag
 import { decryptSecret, isProbablyEncryptedSecret } from '@/lib/security/encryption';
 import { ingestFallbackReplies } from '@/lib/replies/fallback-ingestion';
 import { getLogger } from '@/lib/logger';
-import { incrementCounter, registerCounter } from '@/lib/metrics';
+import { registerCounter } from '@/lib/metrics';
 import { recordHeartbeat } from '@/lib/workers/heartbeat';
 import { ResilienceError } from '@/lib/services/resilience';
 

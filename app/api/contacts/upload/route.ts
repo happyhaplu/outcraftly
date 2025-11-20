@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     let records: Record<string, unknown>[];
     try {
       records = parseCsv(buffer.toString('utf-8'));
-    } catch (parseError) {
+    } catch (_parseError) {
       return NextResponse.json(
         { error: 'Failed to parse CSV file. Please check the format.' },
         { status: 400 }

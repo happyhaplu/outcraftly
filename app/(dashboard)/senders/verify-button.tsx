@@ -53,7 +53,7 @@ export function VerifyButton({ senderId, currentStatus, mutate }: VerifyButtonPr
         const reason = payload?.reason || payload?.error || 'SMTP connection failed.';
         setFeedback({ type: 'error', message: reason });
       }
-    } catch (error) {
+    } catch (_error) {
       setFeedback({ type: 'error', message: 'Something went wrong. Please try again.' });
     } finally {
       setIsSubmitting(false);

@@ -10,7 +10,7 @@ import { executeWithResilience } from '@/lib/services/resilience';
 import { getLogger } from '@/lib/logger';
 import { createStripeClient, getBaseUrl } from '@/lib/payments/stripe-utils';
 
-const stripeLogger = getLogger({ component: 'stripe' });
+const _stripeLogger = getLogger({ component: 'stripe' });
 
 export async function createCheckoutSession({
   team,

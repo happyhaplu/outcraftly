@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createStripeClient, ensureEnv, STRIPE_API_VERSION } from '@/lib/payments/stripe-utils';
+import { createStripeClient, ensureEnv } from '@/lib/payments/stripe-utils';
 
 export const dynamic = 'force-dynamic';
 

@@ -43,7 +43,7 @@ export default {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __structuredConsolePatched: boolean | undefined;
 }
 
@@ -65,12 +65,12 @@ if (typeof window === 'undefined' && !globalThis.__structuredConsolePatched) {
     };
 
   // Replace console methods on server.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   (console as any).log = wrap('info');
   console.info = wrap('info');
   console.warn = wrap('warn');
   console.error = wrap('error');
   // Some runtimes don't have console.debug; guard defensively.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   (console as any).debug = wrap('debug');
 }

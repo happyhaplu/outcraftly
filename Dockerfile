@@ -15,7 +15,7 @@ COPY . .
 # Create public directory if it doesn't exist to prevent build errors
 RUN mkdir -p ./public
 
-RUN pnpm build
+RUN NODE_OPTIONS="--max-old-space-size=4096" pnpm build
 
 # Strip dev dependencies to keep the runtime image small
 RUN pnpm prune --prod

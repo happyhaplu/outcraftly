@@ -110,7 +110,7 @@ describe('SequenceEditor', () => {
       ]
     };
 
-    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock.mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
 
       if (url.endsWith('/api/user')) {

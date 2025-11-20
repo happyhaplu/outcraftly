@@ -3,7 +3,7 @@ import { db } from '@/lib/db/drizzle';
 import { users, teams, teamMembers } from '@/lib/db/schema';
 import { setSession } from '@/lib/auth/session';
 import { NextRequest, NextResponse } from 'next/server';
-import { createStripeClient, getBaseUrl } from '@/lib/payments/stripe-utils';
+import { createStripeClient } from '@/lib/payments/stripe-utils';
 import Stripe from 'stripe';
 
 export const dynamic = 'force-dynamic';

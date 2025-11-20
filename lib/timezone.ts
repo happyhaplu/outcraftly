@@ -138,7 +138,7 @@ function normaliseWindows(windows?: SendWindow[] | null): ParsedWindow[] {
         continue;
       }
       result.push({ startMinutes, endMinutes });
-    } catch (error) {
+    } catch (_error) {
       // Skip invalid window definitions.
     }
   }

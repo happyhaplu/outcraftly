@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
+ 
 // Export the server or client implementation based on runtime without dynamic require paths.
 
 export type { LogContext } from './logger.server';

@@ -3042,8 +3042,7 @@ export type SequenceEnrollmentResult = {
   skipped: number;
 };
 
-const ENROLLMENT_ERROR_CODES = ['sequence_not_found', 'sequence_has_no_steps', 'contacts_not_found', 'sequence_paused', 'sequence_draft'] as const;
-export type SequenceEnrollmentErrorCode = (typeof ENROLLMENT_ERROR_CODES)[number];
+export type SequenceEnrollmentErrorCode = 'sequence_not_found' | 'sequence_has_no_steps' | 'contacts_not_found' | 'sequence_paused' | 'sequence_draft';
 
 export class SequenceEnrollmentError extends Error {
   code: SequenceEnrollmentErrorCode;

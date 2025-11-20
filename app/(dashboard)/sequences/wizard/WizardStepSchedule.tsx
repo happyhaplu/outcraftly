@@ -48,7 +48,7 @@ export function WizardStepSchedule({
   onScheduleChange,
   timezoneSuggestion
 }: WizardStepScheduleProps) {
-  const { mode, sendTime, sendWindowStart, sendWindowEnd, respectContactTimezone, fallbackTimezone, launchAt } = schedule;
+  const { mode, sendTime, sendWindowStart, sendWindowEnd, respectContactTimezone, launchAt } = schedule;
   const timezone = schedule.timezone ?? null;
   const sendDays = schedule.sendDays ?? [];
   const sendWindows = schedule.sendWindows ?? [];
@@ -64,7 +64,7 @@ export function WizardStepSchedule({
         setTimezones(values as string[]);
         return;
       }
-    } catch (e) {
+    } catch (_e) {
       // fall through
     }
 

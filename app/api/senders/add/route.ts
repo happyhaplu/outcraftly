@@ -62,7 +62,7 @@ export async function POST(request: Request) {
         username: data.username,
         password: data.password
       });
-    } catch (error) {
+    } catch (_error) {
       return NextResponse.json(
         { error: 'SMTP connection failed' },
         { status: 400 }

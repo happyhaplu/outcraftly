@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     let decryptedPassword: string;
     try {
       decryptedPassword = decryptSecret(sender.password);
-    } catch (error) {
+    } catch (_error) {
       await updateSenderStatus(team.id, sender.id, 'error');
       return NextResponse.json(
         { error: 'Failed to decrypt sender credentials' },

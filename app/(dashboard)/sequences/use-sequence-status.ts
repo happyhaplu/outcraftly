@@ -248,7 +248,7 @@ const fetchStatuses = async (url: string): Promise<SequenceStatusResponse> => {
       const rawReply = (payload.summary as any)?.replyCount;
       const normReply = (normalized.summary as any)?.replyCount;
       console.log('[useSequenceStatus] replyCount raw vs normalized', { raw: rawReply, normalized: normReply });
-    } catch (e) {
+    } catch (_e) {
       // ignore
     }
     console.groupEnd();

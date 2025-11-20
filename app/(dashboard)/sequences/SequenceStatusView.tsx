@@ -305,7 +305,7 @@ export function SequenceStatusView({ sequenceId }: SequenceStatusViewProps) {
           const normalizedReply = typeof data?.summary?.replyCount === 'number' ? data.summary.replyCount : null;
           console.log('replied (normalized)', normalizedReply);
           console.groupEnd();
-        } catch (e) {
+        } catch (_e) {
           // ignore
         }
         console.groupEnd?.();

@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         contacts: Array.isArray(parsed.data.contacts) ? parsed.data.contacts.length : 0,
         scheduleMode: parsed.data.schedule?.mode
       });
-    } catch (err) {
+    } catch (_err) {
       // swallow logging errors
     }
 

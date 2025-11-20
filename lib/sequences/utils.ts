@@ -7,7 +7,7 @@ import type {
 } from '@/app/(dashboard)/sequences/types';
 
 const VALID_STOP_CONDITIONS = ['manual', 'on_reply', 'on_reply_or_bounce'] as const;
-const VALID_STATUS = ['draft', 'active', 'paused'] as const;
+const _VALID_STATUS = ['draft', 'active', 'paused'] as const;
 
 type StopConditionValue = (typeof VALID_STOP_CONDITIONS)[number];
 
