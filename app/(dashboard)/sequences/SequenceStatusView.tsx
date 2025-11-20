@@ -329,7 +329,7 @@ export function SequenceStatusView({ sequenceId }: SequenceStatusViewProps) {
   const isPaused = lifecycleStatus === 'paused';
   const isActive = lifecycleStatus === 'active';
 
-  const contacts = data?.contacts ?? [];
+  const contacts = useMemo(() => data?.contacts ?? [], [data?.contacts]);
   const steps = data?.steps ?? [];
   const sentPerStep = data?.sentPerStep ?? {};
   const worker = data?.worker ?? {
@@ -358,17 +358,21 @@ export function SequenceStatusView({ sequenceId }: SequenceStatusViewProps) {
     return contacts.filter((contact) => contact.status === filter);
   }, [contacts, filter]);
 
-  const deliverySummary: SequenceStatusSummary = data?.summary ?? {
-    total: 0,
-    pending: 0,
-    sent: 0,
-    replied: 0,
-    replyCount: 0,
-    bounced: 0,
-    failed: 0,
-    skipped: 0,
-    lastActivity: null
-  };
+  const deliverySummary: SequenceStatusSummary = useMemo(
+    () =>
+      data?.summary ?? {
+        total: 0,
+        pending: 0,
+        sent: 0,
+        replied: 0,
+        replyCount: 0,
+        bounced: 0,
+        failed: 0,
+        skipped: 0,
+        lastActivity: null
+      },
+    [data?.summary]
+  );
 
   const expectedSummaryKeys = data?.meta?.summaryKeys ?? ['total', 'pending', 'sent', 'replied', 'replyCount', 'bounced', 'failed', 'skipped', 'lastActivity'];
   const missingSummaryKeys = expectedSummaryKeys.filter((key) => !(key in (deliverySummary as Record<string, unknown>)));

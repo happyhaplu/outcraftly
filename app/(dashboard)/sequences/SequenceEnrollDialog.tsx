@@ -172,7 +172,7 @@ export function SequenceEnrollDialog({
     }
   }, [open, mutate]);
 
-  const contacts = data ?? [];
+  const contacts = useMemo(() => data ?? [], [data]);
 
   const availableTags = useMemo(() => {
     const collected = new Set<string>();

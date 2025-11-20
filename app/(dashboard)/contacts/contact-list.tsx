@@ -113,7 +113,10 @@ export function ContactList({ initialPage }: ContactListProps) {
     revalidateOnFocus: false
   });
 
-  const contacts = paginated?.data ?? (isBaseQuery ? fallbackPage.data : []);
+  const contacts = useMemo(
+    () => paginated?.data ?? (isBaseQuery ? fallbackPage.data : []),
+    [paginated?.data, isBaseQuery, fallbackPage.data]
+  );
   const totalMatches = paginated?.total ?? fallbackPage.total;
   const currentPage = paginated?.page ?? page;
   const totalPages = paginated?.totalPages ?? Math.max(1, Math.ceil(totalMatches / PAGE_SIZE));

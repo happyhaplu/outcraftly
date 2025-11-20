@@ -6,10 +6,10 @@ import type {
   SequenceTrackingSettings
 } from '@/app/(dashboard)/sequences/types';
 
-const VALID_STOP_CONDITIONS = ['manual', 'on_reply', 'on_reply_or_bounce'] as const;
+const _VALID_STOP_CONDITIONS = ['manual', 'on_reply', 'on_reply_or_bounce'] as const;
 const _VALID_STATUS = ['draft', 'active', 'paused'] as const;
 
-type StopConditionValue = (typeof VALID_STOP_CONDITIONS)[number];
+type StopConditionValue = (typeof _VALID_STOP_CONDITIONS)[number];
 
 type RawSequenceSender = {
   id?: number | string;
