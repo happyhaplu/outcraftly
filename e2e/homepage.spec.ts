@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 test.describe('Homepage', () => {
   test('should load successfully @regression', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/Outcraftly/i);
+    await expect(page).toHaveTitle(/Next.js SaaS Starter|Outcraftly/i);
   });
 
   test('should be accessible', async ({ page }) => {

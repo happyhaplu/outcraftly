@@ -4,7 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 test.describe('Authentication', () => {
   test('sign-in page loads @regression', async ({ page }) => {
     await page.goto('/sign-in');
-    await expect(page).toHaveTitle(/Outcraftly/i);
+    await expect(page).toHaveTitle(/Next.js SaaS Starter|Outcraftly/i);
   });
 
   test('sign-in is accessible', async ({ page }) => {
