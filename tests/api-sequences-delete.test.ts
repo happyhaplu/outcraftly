@@ -4,6 +4,7 @@ const getActiveUserMock = vi.fn();
 const getTeamForUserMock = vi.fn();
 const setSequenceLifecycleStatusMock = vi.fn();
 const listSequencesForTeamMock = vi.fn();
+const syncAllSequenceRepliesForTeamMock = vi.fn();
 
 type DeleteRoute = (request: Request, context: { params?: { id?: string } }) => Promise<Response>;
 let DELETE: DeleteRoute;
@@ -21,7 +22,8 @@ vi.mock('@/lib/db/queries', async () => {
     getActiveUser: getActiveUserMock,
     getTeamForUser: getTeamForUserMock,
     setSequenceLifecycleStatus: setSequenceLifecycleStatusMock,
-    listSequencesForTeam: listSequencesForTeamMock
+    listSequencesForTeam: listSequencesForTeamMock,
+    syncAllSequenceRepliesForTeam: syncAllSequenceRepliesForTeamMock
   };
 });
 
@@ -39,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getActiveUserMock.mockResolvedValue({ id: 8 });
   getTeamForUserMock.mockResolvedValue({ id: 99 });
+  syncAllSequenceRepliesForTeamMock.mockResolvedValue(undefined);
   const deletedAt = new Date('2025-10-16T09:00:00.000Z');
   setSequenceLifecycleStatusMock.mockResolvedValue({
     id: '11111111-2222-3333-4444-555555555555',
