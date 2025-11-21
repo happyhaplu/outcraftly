@@ -10,8 +10,7 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
-  CardTitle
+  CardHeader
 } from '@/components/ui/card';
 import { Loader2, Sparkles } from 'lucide-react';
 import { signIn, signUp } from './actions';
