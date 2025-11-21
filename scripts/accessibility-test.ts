@@ -9,7 +9,12 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const PAGES = ['/', '/sign-in', '/pricing'];
 
 async function checkAccessibility(page: Page, url: string) {
-  await page.goto(url);
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+  } catch (error: any) {
+    console.log(`❌ ${url} - Failed to load: ${error.message}`);
+    return 1;
+  }
   
   // Inject axe-core
   await page.addScriptTag({ 

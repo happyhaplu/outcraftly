@@ -26,12 +26,12 @@ export default defineConfig({
     },
   ],
 
-  // Auto-start server in dev mode
-  webServer: process.env.CI ? undefined : {
+  // Auto-start server only if not already running
+  webServer: process.env.CI || !process.env.BASE_URL ? {
     command: 'pnpm start',
     url: 'http://localhost:3000',
     reuseExistingServer: true,
     timeout: 60000,
-  },
+  } : undefined,
 });
 
