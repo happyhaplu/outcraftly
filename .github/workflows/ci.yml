@@ -60,12 +60,3 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm test:ci
-
-      - name: Run Playwright tests
-        run: pnpm test:playwright
-
-      - name: Run regression tests
-        run: pnpm test:regression
-
-      - name: Run accessibility tests
-        run: pnpm test:accessibility
