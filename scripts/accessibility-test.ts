@@ -30,12 +30,38 @@ async function checkAccessibility(page: Page, url: string) {
   // Check if page has proper structure
   const hasMain = await page.locator('main').count() > 0;
   const hasH1 = await page.locator('h1').count() > 0;
-  const formInputsWithoutLabels = await page.locator('input:not([aria-label]):not([aria-labelledby])').count();
+  
+  // Check for inputs without proper labeling
+  // Exclude: hidden inputs, inputs with aria-label, inputs with aria-labelledby, inputs with associated labels
+  const allVisibleInputs = await page.locator('input:not([type="hidden"])').all();
+  let unlabeledInputCount = 0;
+  
+  for (const input of allVisibleInputs) {
+    const hasAriaLabel = await input.getAttribute('aria-label');
+    const hasAriaLabelledBy = await input.getAttribute('aria-labelledby');
+    const inputId = await input.getAttribute('id');
+    
+    // If has aria-label or aria-labelledby, it's labeled
+    if (hasAriaLabel || hasAriaLabelledBy) {
+      continue;
+    }
+    
+    // Check if there's a label element associated with this input via 'for' attribute
+    if (inputId) {
+      const associatedLabel = await page.locator(`label[for="${inputId}"]`).count();
+      if (associatedLabel > 0) {
+        continue;
+      }
+    }
+    
+    unlabeledInputCount++;
+  }
+  
   const imagesWithoutAlt = await page.locator('img:not([alt])').count();
   
   if (!hasMain) issues.push('Missing <main> landmark');
   if (!hasH1) issues.push('Missing <h1> heading');
-  if (formInputsWithoutLabels > 0) issues.push(`${formInputsWithoutLabels} inputs without labels`);
+  if (unlabeledInputCount > 0) issues.push(`${unlabeledInputCount} inputs without labels`);
   if (imagesWithoutAlt > 0) issues.push(`${imagesWithoutAlt} images without alt text`);
   
   console.log(`${issues.length === 0 ? '✅' : '⚠️ '} ${url}`);

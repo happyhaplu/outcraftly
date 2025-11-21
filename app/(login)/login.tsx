@@ -37,7 +37,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   }`;
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-gradient-to-br from-primary/5 via-transparent to-primary/10 px-4 py-12">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-gradient-to-br from-primary/5 via-transparent to-primary/10 px-4 py-12">
       <div className="w-full max-w-md">
         <Card className="p-0 shadow-xl">
           <CardHeader className="space-y-6 text-center">
@@ -45,9 +45,9 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               <Sparkles className="h-6 w-6" />
             </div>
             <div className="space-y-1">
-              <CardTitle className="text-2xl font-semibold">
+              <h1 className="text-2xl font-semibold">
                 {isSignUp ? 'Create your account' : 'Welcome back'}
-              </CardTitle>
+              </h1>
               <CardDescription className="text-base">
                 {isSignUp
                   ? 'Start building with the Outcraftly platform in minutes.'
@@ -57,9 +57,9 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
           </CardHeader>
           <CardContent className="pb-8">
             <form className="space-y-5" action={formAction}>
-              <input type="hidden" name="redirect" value={redirect || ''} />
-              <input type="hidden" name="priceId" value={priceId || ''} />
-              <input type="hidden" name="inviteId" value={inviteId || ''} />
+              <input type="hidden" name="redirect" value={redirect || ''} aria-label="Redirect URL" />
+              <input type="hidden" name="priceId" value={priceId || ''} aria-label="Price ID" />
+              <input type="hidden" name="inviteId" value={inviteId || ''} aria-label="Invite ID" />
 
               {isSignUp && (
                 <div className="space-y-2">
@@ -154,6 +154,6 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }

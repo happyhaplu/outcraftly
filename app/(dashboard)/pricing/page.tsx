@@ -130,7 +130,7 @@ function PricingCard({
       </CardContent>
       <CardFooter>
         <form action={checkoutAction} className="w-full">
-          <input type="hidden" name="priceId" value={priceId} />
+          <input type="hidden" name="priceId" value={priceId} aria-label="Selected price plan" />
           <SubmitButton />
         </form>
       </CardFooter>
