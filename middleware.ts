@@ -11,13 +11,13 @@ const userLoginRoute = '/sign-in';
 export async function middleware(request: NextRequest) {
   const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID();
 
-  const enforceHttps = process.env.NODE_ENV === 'production';
-
-  if (enforceHttps && request.headers.get('x-forwarded-proto') === 'http') {
-    const httpsUrl = new URL(request.url);
-    httpsUrl.protocol = 'https:';
-    return NextResponse.redirect(httpsUrl);
-  }
+  // Disable HTTPS enforcement - configure via reverse proxy (Nginx) instead
+  // const enforceHttps = process.env.NODE_ENV === 'production';
+  // if (enforceHttps && request.headers.get('x-forwarded-proto') === 'http') {
+  //   const httpsUrl = new URL(request.url);
+  //   httpsUrl.protocol = 'https:';
+  //   return NextResponse.redirect(httpsUrl);
+  // }
 
   return withLogContext({ requestId }, async () => {
     const logger = getLogger({ component: 'middleware' });
