@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
+import { Suspense } from 'react';
 
 import { ContactList } from './contact-list';
 import { getPaginatedContactsForTeam, getTeamForUser } from '@/lib/db/queries';
@@ -47,7 +48,9 @@ export default async function ContactsPage() {
       {team && initialPage ? (
         <div className="space-y-8">
           <ContactActions />
-          <ContactList initialPage={initialPage} />
+          <Suspense fallback={<div>Loading contacts...</div>}>
+            <ContactList initialPage={initialPage} />
+          </Suspense>
         </div>
       ) : (
         <Card className="border-dashed border-primary/40 bg-primary/5 text-center">

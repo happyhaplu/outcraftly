@@ -7,7 +7,7 @@ export const fetchCache = 'force-no-store';
 
 export default function SignInPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading...</div>}>
       <Login mode="signin" />
     </Suspense>
   );
