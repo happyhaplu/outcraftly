@@ -50,85 +50,119 @@ const signInSchema = z.object({
 });
 
 async function fetchUserWithTeam(email: string) {
-  const rows = await db
-    .select({
-      user: users,
-      team: {
-        id: teams.id,
-        name: teams.name,
-        createdAt: teams.createdAt,
-        updatedAt: teams.updatedAt,
-        planName: teams.planName,
-        subscriptionStatus: teams.subscriptionStatus,
-        stripeCustomerId: teams.stripeCustomerId,
-        stripeSubscriptionId: teams.stripeSubscriptionId,
-        stripeProductId: teams.stripeProductId
-      }
-    })
-    .from(users)
-    .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
-    .leftJoin(teams, eq(teamMembers.teamId, teams.id))
-    .where(eq(users.email, email))
-    .limit(1);
+  try {
+    console.log('[fetchUserWithTeam] Querying database for email:', email);
+    const rows = await db
+      .select({
+        user: users,
+        team: {
+          id: teams.id,
+          name: teams.name,
+          createdAt: teams.createdAt,
+          updatedAt: teams.updatedAt,
+          planName: teams.planName,
+          subscriptionStatus: teams.subscriptionStatus,
+          stripeCustomerId: teams.stripeCustomerId,
+          stripeSubscriptionId: teams.stripeSubscriptionId,
+          stripeProductId: teams.stripeProductId
+        }
+      })
+      .from(users)
+      .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
+      .leftJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(users.email, email))
+      .limit(1);
 
-  if (rows.length === 0) {
-    return null;
+    console.log('[fetchUserWithTeam] Query returned', rows.length, 'rows');
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const [{ user, team }] = rows;
+    console.log('[fetchUserWithTeam] Found user ID:', user.id, 'with team:', team?.id || 'none');
+    return {
+      user,
+      team: team && team.id !== null ? { ...team, paymentStatus: 'unpaid' as const } : null
+    };
+  } catch (error) {
+    console.error('[fetchUserWithTeam] Database query error:', error);
+    console.error('[fetchUserWithTeam] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      name: error?.constructor?.name
+    });
+    throw error; // Re-throw to be caught by signIn handler
   }
-
-  const [{ user, team }] = rows;
-  return {
-    user,
-    team: team && team.id !== null ? { ...team, paymentStatus: 'unpaid' as const } : null
-  };
 }
 
 export const signIn = validatedAction(signInSchema, async (data, formData) => {
-  console.log('[signIn] Starting sign-in process');
-  const { email, password } = data;
+  try {
+    console.log('[signIn] Starting sign-in process for email:', data.email);
+    const { email, password } = data;
 
-  console.log('[signIn] Fetching user with team');
-  const row = await fetchUserWithTeam(email);
+    console.log('[signIn] Fetching user with team from database');
+    const row = await fetchUserWithTeam(email);
 
-  if (!row) {
-    console.log('[signIn] User not found');
+    if (!row) {
+      console.log('[signIn] User not found in database');
+      return {
+        error: 'Invalid email or password. Please try again.',
+        email,
+        password
+      };
+    }
+
+    const { user: foundUser, team: foundTeam } = row;
+    console.log('[signIn] User found, ID:', foundUser.id, 'Team:', foundTeam?.id || 'none');
+
+    console.log('[signIn] Verifying password');
+    const isPasswordValid = await comparePasswords(
+      password,
+      foundUser.passwordHash
+    );
+
+    if (!isPasswordValid) {
+      console.log('[signIn] Invalid password for user:', foundUser.id);
+      return {
+        error: 'Invalid email or password. Please try again.',
+        email,
+        password
+      };
+    }
+
+    console.log('[signIn] Password valid, setting session and logging activity');
+    await Promise.all([
+      setSession(foundUser),
+      logActivity(foundTeam?.id, foundUser.id, ActivityType.SIGN_IN)
+    ]);
+
+    const redirectTo = formData.get('redirect') as string | null;
+    if (redirectTo === 'checkout') {
+      const priceId = formData.get('priceId') as string;
+      console.log('[signIn] Redirecting to checkout with priceId:', priceId);
+      return createCheckoutSession({ team: foundTeam, priceId });
+    }
+
+    console.log('[signIn] Sign-in successful, redirecting to dashboard');
+    redirect('/dashboard');
+  } catch (error) {
+    console.error('[signIn] Fatal error during sign-in:', error);
+    console.error('[signIn] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('[signIn] Error type:', error?.constructor?.name);
+    
+    // Re-throw redirect errors (these are expected behavior in Next.js)
+    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      throw error;
+    }
+    
+    // Return user-friendly error for all other cases
     return {
-      error: 'Invalid email or password. Please try again.',
-      email,
-      password
+      error: 'An error occurred during sign-in. Please try again or contact support if the problem persists.',
+      email: data.email,
+      password: ''
     };
   }
-
-  const { user: foundUser, team: foundTeam } = row;
-  console.log('[signIn] User found, checking password');
-
-  const isPasswordValid = await comparePasswords(
-    password,
-    foundUser.passwordHash
-  );
-
-  if (!isPasswordValid) {
-    console.log('[signIn] Invalid password');
-    return {
-      error: 'Invalid email or password. Please try again.',
-      email,
-      password
-    };
-  }
-
-  console.log('[signIn] Setting session and logging activity');
-  await Promise.all([
-    setSession(foundUser),
-    logActivity(foundTeam?.id, foundUser.id, ActivityType.SIGN_IN)
-  ]);
-
-  const redirectTo = formData.get('redirect') as string | null;
-  if (redirectTo === 'checkout') {
-    const priceId = formData.get('priceId') as string;
-    return createCheckoutSession({ team: foundTeam, priceId });
-  }
-
-  console.log('[signIn] Redirecting to dashboard');
-  redirect('/dashboard');
 });
 
 const signUpSchema = z
