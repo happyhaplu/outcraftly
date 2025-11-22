@@ -83,11 +83,14 @@ async function fetchUserWithTeam(email: string) {
 }
 
 export const signIn = validatedAction(signInSchema, async (data, formData) => {
+  console.log('[signIn] Starting sign-in process');
   const { email, password } = data;
 
+  console.log('[signIn] Fetching user with team');
   const row = await fetchUserWithTeam(email);
 
   if (!row) {
+    console.log('[signIn] User not found');
     return {
       error: 'Invalid email or password. Please try again.',
       email,
@@ -96,6 +99,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
   }
 
   const { user: foundUser, team: foundTeam } = row;
+  console.log('[signIn] User found, checking password');
 
   const isPasswordValid = await comparePasswords(
     password,
@@ -103,6 +107,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
   );
 
   if (!isPasswordValid) {
+    console.log('[signIn] Invalid password');
     return {
       error: 'Invalid email or password. Please try again.',
       email,
@@ -110,6 +115,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     };
   }
 
+  console.log('[signIn] Setting session and logging activity');
   await Promise.all([
     setSession(foundUser),
     logActivity(foundTeam?.id, foundUser.id, ActivityType.SIGN_IN)
@@ -121,6 +127,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     return createCheckoutSession({ team: foundTeam, priceId });
   }
 
+  console.log('[signIn] Redirecting to dashboard');
   redirect('/dashboard');
 });
 

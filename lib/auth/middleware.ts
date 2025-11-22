@@ -19,12 +19,22 @@ export function validatedAction<S extends z.ZodType<any, any>, T>(
   action: ValidatedActionFunction<S, T>
 ) {
   return async (prevState: ActionState, formData: FormData) => {
-    const result = schema.safeParse(Object.fromEntries(formData));
-    if (!result.success) {
-      return { error: result.error.errors[0].message };
-    }
+    try {
+      const result = schema.safeParse(Object.fromEntries(formData));
+      if (!result.success) {
+        return { error: result.error.errors[0].message };
+      }
 
-    return action(result.data, formData);
+      return await action(result.data, formData);
+    } catch (error) {
+      console.error('[validatedAction] Error:', error);
+      if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+        throw error; // Re-throw redirect errors
+      }
+      return { 
+        error: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.' 
+      };
+    }
   };
 }
 
