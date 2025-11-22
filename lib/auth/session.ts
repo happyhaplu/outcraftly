@@ -52,10 +52,13 @@ export async function setSession(user: SessionUser) {
     expires: expiresInOneDay.toISOString(),
   };
   const encryptedSession = await signToken(session);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isLocalhost = process.env.BASE_URL?.includes('localhost') || process.env.BASE_URL?.includes('127.0.0.1');
+  
   (await cookies()).set('session', encryptedSession, {
     expires: expiresInOneDay,
     httpOnly: true,
-    secure: true,
+    secure: isProduction && !isLocalhost, // Only require HTTPS in production with a real domain
     sameSite: 'lax',
   });
 }
