@@ -147,18 +147,13 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     console.log('[signIn] Sign-in successful, redirecting to dashboard');
     redirect('/dashboard');
   } catch (error) {
-    console.error('[signIn] Fatal error during sign-in:', error);
-    console.error('[signIn] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('[signIn] Error type:', error?.constructor?.name);
-    
-    // Re-throw redirect errors (these are expected behavior in Next.js)
+    // Allow normal Next.js redirect flow without logging as an error
     if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
-      throw error;
+      throw error; // expected redirect control flow
     }
-    
-    // Return user-friendly error for all other cases
+    console.error('[signIn] Unhandled error during sign-in:', error);
     return {
-      error: 'An error occurred during sign-in. Please try again or contact support if the problem persists.',
+      error: 'Unexpected sign-in error. Please retry.',
       email: data.email,
       password: ''
     };
