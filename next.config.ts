@@ -5,13 +5,19 @@ const nextConfig: NextConfig = {
     clientSegmentCache: true,
     nodeMiddleware: true,
     serverActions: {
-      allowedOrigins: ['*']  // Allow all origins in development/staging
+      bodySizeLimit: '2mb',
+      allowedOrigins: ['*']
     }
   },
   logging: {
     fetches: {
       fullUrl: true
     }
+  },
+  // Disable hostname validation for staging
+  assetPrefix: undefined,
+  typescript: {
+    ignoreBuildErrors: false
   }
 };
 
