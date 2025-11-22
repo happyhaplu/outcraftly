@@ -4,6 +4,7 @@
     "dev": "next dev --turbopack",
     "build": "tsc --project tsconfig.build.json && next build",
     "start": "next start",
+    "start:prod": "next start --hostname 0.0.0.0",
     "lint": "eslint . --ext .ts,.tsx",
     "db:setup": "npx tsx lib/db/setup.ts",
     "db:setup:ci": "tsx scripts/db-setup-ci.ts",
