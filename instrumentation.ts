@@ -15,24 +15,40 @@ export async function register() {
     process.on('uncaughtException', (error) => {
       console.error('[instrumentation] Uncaught Exception:', error);
       console.error('[instrumentation] Stack:', error.stack);
+      console.error('[instrumentation] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
     });
 
     process.on('unhandledRejection', (reason, promise) => {
       console.error('[instrumentation] Unhandled Rejection at:', promise);
       console.error('[instrumentation] Reason:', reason);
+      if (reason instanceof Error) {
+        console.error('[instrumentation] Rejection stack:', reason.stack);
+        console.error('[instrumentation] Rejection details:', JSON.stringify(reason, Object.getOwnPropertyNames(reason)));
+      }
     });
 
-    // Override console.error to capture more details
+    // Override console.error to capture ALL error details
     const originalError = console.error;
     console.error = function (...args: any[]) {
-      if (args.length > 0 && args[0] === ' ⨯') {
-        originalError.apply(console, ['[CAPTURED ERROR]', ...args]);
-        if (args[1] && typeof args[1] === 'object') {
-          originalError.apply(console, ['[ERROR DETAILS]', JSON.stringify(args[1], null, 2)]);
+      // Log everything
+      originalError.apply(console, ['[FULL ERROR CAPTURE]', ...args]);
+      
+      // Try to extract more details
+      args.forEach((arg, index) => {
+        if (arg && typeof arg === 'object') {
+          try {
+            originalError.apply(console, [`[ARG ${index} JSON]`, JSON.stringify(arg, Object.getOwnPropertyNames(arg), 2)]);
+          } catch (e) {
+            originalError.apply(console, [`[ARG ${index} STRING]`, String(arg)]);
+          }
+          
+          if (arg instanceof Error) {
+            originalError.apply(console, [`[ARG ${index} ERROR STACK]`, arg.stack]);
+            originalError.apply(console, [`[ARG ${index} ERROR MESSAGE]`, arg.message]);
+            originalError.apply(console, [`[ARG ${index} ERROR NAME]`, arg.name]);
+          }
         }
-      } else {
-        originalError.apply(console, args);
-      }
+      });
     };
 
     console.log('[instrumentation] Error handlers registered');
