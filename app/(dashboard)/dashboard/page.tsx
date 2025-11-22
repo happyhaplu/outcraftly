@@ -108,11 +108,11 @@ const quickActions = [
 
 export default async function DashboardPage() {
   try {
-    logger.info('Dashboard: Starting page load');
+    logger.info({ component: 'Dashboard' }, 'Starting page load');
     const [user, team] = await Promise.all([getUser(), getTeamForUser()]);
-    logger.info('Dashboard: Got user and team', { userId: user?.id, teamId: team?.id });
+    logger.info({ component: 'Dashboard', userId: user?.id, teamId: team?.id }, 'Got user and team');
     const usageSummary = team ? await getTeamUsageSummary(team.id) : null;
-    logger.info('Dashboard: Got usage summary', { usageSummary });
+    logger.info({ component: 'Dashboard' }, 'Got usage summary');
 
   const rawPlan = usageSummary?.plan ?? user?.plan ?? DEFAULT_USER_PLAN;
   const planNames = Object.keys(DEFAULT_PLAN_USAGE_LIMITS) as UserPlan[];
@@ -338,7 +338,7 @@ export default async function DashboardPage() {
     </div>
   );
   } catch (error) {
-    logger.error('Dashboard error:', error);
+    logger.error({ component: 'Dashboard', error }, 'Dashboard error');
     throw error;
   }
 }
