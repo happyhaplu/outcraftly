@@ -25,6 +25,7 @@ import {
   DEFAULT_USER_PLAN,
   type UserPlan
 } from "@/lib/config/plans";
+import { logger } from "@/lib/logger";
 
 const stats = [
   {
@@ -106,8 +107,12 @@ const quickActions = [
 ];
 
 export default async function DashboardPage() {
-  const [user, team] = await Promise.all([getUser(), getTeamForUser()]);
-  const usageSummary = team ? await getTeamUsageSummary(team.id) : null;
+  try {
+    logger.info('Dashboard: Starting page load');
+    const [user, team] = await Promise.all([getUser(), getTeamForUser()]);
+    logger.info('Dashboard: Got user and team', { userId: user?.id, teamId: team?.id });
+    const usageSummary = team ? await getTeamUsageSummary(team.id) : null;
+    logger.info('Dashboard: Got usage summary', { usageSummary });
 
   const rawPlan = usageSummary?.plan ?? user?.plan ?? DEFAULT_USER_PLAN;
   const planNames = Object.keys(DEFAULT_PLAN_USAGE_LIMITS) as UserPlan[];
@@ -332,4 +337,8 @@ export default async function DashboardPage() {
       </section>
     </div>
   );
+  } catch (error) {
+    logger.error('Dashboard error:', error);
+    throw error;
+  }
 }
