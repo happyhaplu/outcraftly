@@ -10,10 +10,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('[Global Error]', error);
-    console.error('[Global Error Digest]', error.digest);
-    console.error('[Global Error Message]', error.message);
-    console.error('[Global Error Stack]', error.stack);
+    // Log the error to an error reporting service
+    console.error(error);
   }, [error]);
 
   return (
