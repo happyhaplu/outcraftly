@@ -1,5 +1,16 @@
+import { assertProductionSecrets } from '@/lib/startup/validate-env';
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Validate production secrets once at startup
+    try {
+      assertProductionSecrets();
+      console.log('[instrumentation] Production secrets validated');
+    } catch (error) {
+      console.error('[instrumentation] Secret validation failed:', error);
+      throw error;
+    }
+
     // Capture all unhandled errors
     process.on('uncaughtException', (error) => {
       console.error('[instrumentation] Uncaught Exception:', error);

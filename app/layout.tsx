@@ -1,7 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { assertProductionSecrets } from '@/lib/startup/validate-env';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,8 +21,6 @@ const inter = Inter({
   weight: ['400', '500', '600', '700'],
   display: 'swap'
 });
-
-assertProductionSecrets();
 
 export default function RootLayout({
   children
