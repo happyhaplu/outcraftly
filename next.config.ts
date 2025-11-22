@@ -5,7 +5,12 @@ const nextConfig: NextConfig = {
     clientSegmentCache: true,
     nodeMiddleware: true,
     serverActions: {
-      allowedOrigins: ['206.1.53.83:3000', 'localhost:3000']
+      allowedOrigins: ['206.1.53.83:3000', 'localhost:3000', '206.1.53.83']
+    }
+  },
+  logging: {
+    fetches: {
+      fullUrl: true
     }
   }
 };
