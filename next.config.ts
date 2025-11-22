@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
     nodeMiddleware: true,
     serverActions: {
       allowedOrigins: ['206.1.53.83:3000', 'localhost:3000', '206.1.53.83']
-    }
+    },
+    instrumentationHook: true
   },
   logging: {
     fetches: {
