@@ -153,6 +153,10 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
       throw error; // expected redirect control flow
     }
     console.error('[signIn] Unhandled error during sign-in:', error);
+    console.error('[signIn] Error name:', error instanceof Error ? error.name : 'Unknown');
+    console.error('[signIn] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[signIn] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    console.error('[signIn] Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     return {
       error: 'Unexpected sign-in error. Please retry or contact support.',
       email: data.email,
