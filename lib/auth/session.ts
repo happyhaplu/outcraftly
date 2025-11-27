@@ -3,6 +3,10 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User } from '@/lib/db/schema';
 
+if (!process.env.AUTH_SECRET) {
+  throw new Error('AUTH_SECRET environment variable is not set');
+}
+
 const key = new TextEncoder().encode(process.env.AUTH_SECRET);
 const SALT_ROUNDS = 10;
 
@@ -53,6 +57,11 @@ export async function setSession(user: SessionUser) {
   };
   const encryptedSession = await signToken(session);
   const baseUrl = process.env.BASE_URL || '';
+  
+  if (!baseUrl) {
+    console.warn('[setSession] BASE_URL is not set, cookie security may be compromised');
+  }
+  
   const isHttps = baseUrl.startsWith('https://');
   
   (await cookies()).set('session', encryptedSession, {

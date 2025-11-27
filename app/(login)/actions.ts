@@ -90,9 +90,10 @@ async function fetchUserWithTeam(email: string) {
     console.error('[fetchUserWithTeam] Error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : 'No stack trace',
-      name: error?.constructor?.name
+      name: (error as any)?.constructor?.name
     });
-    throw error; // Re-throw to be caught by signIn handler
+    // Swallow DB errors so sign-in can present a generic message.
+    return null;
   }
 }
 
@@ -105,7 +106,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     const row = await fetchUserWithTeam(email);
 
     if (!row) {
-      console.log('[signIn] User not found in database');
+      console.log('[signIn] User lookup failed (not found or DB error)');
       return {
         error: 'Invalid email or password. Please try again.',
         email,
@@ -153,7 +154,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     }
     console.error('[signIn] Unhandled error during sign-in:', error);
     return {
-      error: 'Unexpected sign-in error. Please retry.',
+      error: 'Unexpected sign-in error. Please retry or contact support.',
       email: data.email,
       password: ''
     };
