@@ -50,11 +50,15 @@ if (!process.env.POSTGRES_URL) {
   client = createNoopProxy('client') as PostgresClient;
   db = createNoopProxy('db') as DrizzleClient;
 } else {
-  client = postgres(process.env.POSTGRES_URL, {
+  const connectionConfig: postgres.Options<{}> = {
     max: Number.parseInt(process.env.POSTGRES_MAX_CONNECTIONS ?? '10', 10),
     idle_timeout: Number.parseInt(process.env.POSTGRES_IDLE_TIMEOUT ?? '5', 10),
-    connect_timeout: Number.parseInt(process.env.POSTGRES_CONNECT_TIMEOUT ?? '10', 10)
-  });
+    connect_timeout: Number.parseInt(process.env.POSTGRES_CONNECT_TIMEOUT ?? '10', 10),
+    ssl: 'require',
+    prepare: false, // Required for PgBouncer/connection poolers
+  };
+  
+  client = postgres(process.env.POSTGRES_URL, connectionConfig);
   db = drizzle(client, { schema });
 }
 
