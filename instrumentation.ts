@@ -38,7 +38,7 @@ export async function register() {
         if (arg && typeof arg === 'object') {
           try {
             originalError.apply(console, [`[ARG ${index} JSON]`, JSON.stringify(arg, Object.getOwnPropertyNames(arg), 2)]);
-          } catch (e) {
+          } catch (_e) {
             originalError.apply(console, [`[ARG ${index} STRING]`, String(arg)]);
           }
           
