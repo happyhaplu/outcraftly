@@ -1,8 +1,5 @@
 import '@testing-library/jest-dom/vitest';
 
-// Ensure NODE_ENV is set to 'test'
-process.env.NODE_ENV = 'test';
-
 // Set default test environment variables if not provided
 if (!process.env.AUTH_SECRET) {
   process.env.AUTH_SECRET = 'test-secret-key-for-unit-tests-only-do-not-use-in-production';
