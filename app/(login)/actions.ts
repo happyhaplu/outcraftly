@@ -52,6 +52,15 @@ const signInSchema = z.object({
 async function fetchUserWithTeam(email: string) {
   try {
     console.log('[fetchUserWithTeam] Querying database for email:', email);
+    
+    // Explicit DB availability check
+    if (!process.env.POSTGRES_URL) {
+      const error = new Error('POSTGRES_URL is not set in runtime environment');
+      console.error('[fetchUserWithTeam] CRITICAL:', error.message);
+      console.error('[fetchUserWithTeam] Available env keys:', Object.keys(process.env).filter(k => k.includes('POSTGRES') || k.includes('DATABASE')));
+      throw error;
+    }
+    
     const rows = await db
       .select({
         user: users,
@@ -90,7 +99,9 @@ async function fetchUserWithTeam(email: string) {
     console.error('[fetchUserWithTeam] Error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : 'No stack trace',
-      name: (error as any)?.constructor?.name
+      name: (error as any)?.constructor?.name,
+      code: (error as any)?.code,
+      cause: (error as any)?.cause
     });
     // Swallow DB errors so sign-in can present a generic message.
     return null;
