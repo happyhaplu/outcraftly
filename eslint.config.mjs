@@ -12,7 +12,21 @@ export default tseslint.config(
       'coverage/**',
       'design/**',
       'scripts/**/*.js',
-      '**/*.d.ts'
+      '**/*.d.ts',
+      // Debug and test files
+      'check-db-schema.js',
+      'client-login-test.js',
+      'test-drizzle.js',
+      'test-log-activity.js',
+      'test-signin-action.js',
+      'test-db-compiled.mjs',
+      'test-db-in-nextjs.mjs',
+      '*.test.js',
+      // PM2 config
+      'ecosystem.config.js',
+      // Playwright reports (generated)
+      'playwright-report/**',
+      'test-results/**'
     ]
   },
   js.configs.recommended,
