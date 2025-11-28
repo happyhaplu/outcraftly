@@ -3,11 +3,15 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User } from '@/lib/db/schema';
 
-if (!process.env.AUTH_SECRET) {
+const isTest = process.env.NODE_ENV === 'test';
+
+if (!process.env.AUTH_SECRET && !isTest) {
   throw new Error('AUTH_SECRET environment variable is not set');
 }
 
-const key = new TextEncoder().encode(process.env.AUTH_SECRET);
+// Use a test secret in test environment
+const authSecret = process.env.AUTH_SECRET || (isTest ? 'test-secret-key-for-unit-tests-only-do-not-use-in-production' : '');
+const key = new TextEncoder().encode(authSecret);
 const SALT_ROUNDS = 10;
 
 export async function hashPassword(password: string) {
