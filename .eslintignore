@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# Next.js
+.next/
+out/
+build/
+
+# Production
+dist/
+
+# Generated files
+*.tsbuildinfo
+next-env.d.ts
+
+# Debug and temporary files
+*.log
+check-db-schema.js
+client-login-test.js
+test-drizzle.js
+test-log-activity.js
+test-signin-action.js
+*.test.js
+
+# PM2 configuration (Node.js not TypeScript)
+ecosystem.config.js
+
+# Scripts that use Node.js globals
+scripts/*.js
+
+# Design folder (separate project)
+design/
