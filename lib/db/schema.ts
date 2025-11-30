@@ -572,14 +572,14 @@ export type TeamDataWithMembers = Team & {
 };
 
 export enum ActivityType {
-  SIGN_UP = 'SIGN_UP',
-  SIGN_IN = 'SIGN_IN',
-  SIGN_OUT = 'SIGN_OUT',
-  UPDATE_PASSWORD = 'UPDATE_PASSWORD',
-  DELETE_ACCOUNT = 'DELETE_ACCOUNT',
-  UPDATE_ACCOUNT = 'UPDATE_ACCOUNT',
-  CREATE_TEAM = 'CREATE_TEAM',
-  REMOVE_TEAM_MEMBER = 'REMOVE_TEAM_MEMBER',
-  INVITE_TEAM_MEMBER = 'INVITE_TEAM_MEMBER',
-  ACCEPT_INVITATION = 'ACCEPT_INVITATION',
+  SIGN_UP = 'sign_up',
+  SIGN_IN = 'sign_in',
+  SIGN_OUT = 'sign_out',
+  UPDATE_PASSWORD = 'update_password',
+  DELETE_ACCOUNT = 'delete_account',
+  UPDATE_ACCOUNT = 'update_account',
+  CREATE_TEAM = 'create_team',
+  REMOVE_TEAM_MEMBER = 'remove_team_member',
+  INVITE_TEAM_MEMBER = 'invite_team_member',
+  ACCEPT_INVITATION = 'accept_invitation',
 }

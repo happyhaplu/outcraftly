@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
     nodeMiddleware: true,
     serverActions: {
       bodySizeLimit: '2mb',
-      allowedOrigins: ['*']
+      allowedOrigins: [
+        'staging.outcraftly.com',
+        '155.133.26.49:3000',
+        'localhost:3000'
+      ]
     }
   },
   logging: {

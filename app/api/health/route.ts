@@ -18,10 +18,13 @@ export async function GET() {
       env: {
         baseUrl: process.env.BASE_URL,
         nodeEnv: process.env.NODE_ENV,
-        postgresConfigured: !!process.env.POSTGRES_URL
+        postgresConfigured: !!process.env.POSTGRES_URL,
+        databaseConfigured: !!process.env.DATABASE_URL
       }
     });
   } catch (error) {
+    console.error('[health] Database connectivity check failed:', error);
+    
     return NextResponse.json({
       status: 'unhealthy',
       database: 'disconnected',
@@ -30,7 +33,8 @@ export async function GET() {
       env: {
         baseUrl: process.env.BASE_URL,
         nodeEnv: process.env.NODE_ENV,
-        postgresConfigured: !!process.env.POSTGRES_URL
+        postgresConfigured: !!process.env.POSTGRES_URL,
+        databaseConfigured: !!process.env.DATABASE_URL
       }
     }, { status: 503 });
   }

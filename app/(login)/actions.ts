@@ -193,13 +193,17 @@ const signUpSchema = z
   });
 
 export const signUp = validatedAction(signUpSchema, async (data, formData) => {
-  const { name, email, password, inviteId } = data;
+  try {
+    console.log('[signUp] Starting sign-up process for email:', data.email);
+    const { name, email, password, inviteId } = data;
 
-  const existingUser = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
+    console.log('[signUp] Checking for existing user');
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    console.log('[signUp] Existing user check complete, found:', existingUser.length);
 
   if (existingUser.length > 0) {
     return {
@@ -322,7 +326,26 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
     return createCheckoutSession({ team: createdTeam, priceId });
   }
 
-  redirect('/dashboard');
+    console.log('[signUp] Sign-up successful, redirecting to dashboard');
+    redirect('/dashboard');
+  } catch (error) {
+    // Allow normal Next.js redirect flow without logging as an error
+    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      throw error;
+    }
+    console.error('[signUp] Unhandled error during sign-up:', error);
+    console.error('[signUp] Error name:', error instanceof Error ? error.name : 'Unknown');
+    console.error('[signUp] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[signUp] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    console.error('[signUp] Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    return {
+      error: 'Unexpected sign-up error. Please retry or contact support.',
+      name: data.name,
+      email: data.email,
+      password: '',
+      confirmPassword: ''
+    };
+  }
 });
 
 export async function signOut() {
