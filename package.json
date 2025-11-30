@@ -4,7 +4,7 @@
     "dev": "next dev --turbopack",
     "build": "tsc --project tsconfig.build.json && next build",
     "start": "next start",
-    "start:prod": "next start --hostname 0.0.0.0",
+    "start:staging": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint . --ext .ts,.tsx",
     "db:setup": "npx tsx lib/db/setup.ts",
     "db:setup:ci": "tsx scripts/db-setup-ci.ts",
@@ -78,6 +78,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
     "@eslint/js": "^9.39.1",
+    "@next/eslint-plugin-next": "^16.0.5",
     "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

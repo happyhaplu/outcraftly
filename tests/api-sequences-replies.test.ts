@@ -272,8 +272,8 @@ describe('Reply tracking regression', () => {
       { id: 'log-send', sequenceId: 'sequence-clean', type: 'send', messageId: 'send-msg' }
     );
 
-    const module = await import('@/scripts/cleanup-sequence-replies');
-    const summary = await module.cleanupSequenceReplies({ dryRun: false }, now);
+    const cleanupModule = await import('@/scripts/cleanup-sequence-replies');
+    const summary = await cleanupModule.cleanupSequenceReplies({ dryRun: false }, now);
 
     expect(summary).toMatchObject({
       sequencesProcessed: 1,

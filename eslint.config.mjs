@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import nextPlugin from '@next/eslint-plugin-next';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -48,9 +49,12 @@ export default tseslint.config(
       }
     },
     plugins: {
-      'react-hooks': reactHooks
+      'react-hooks': reactHooks,
+      '@next/next': nextPlugin
     },
     rules: {
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs['core-web-vitals'].rules,
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
