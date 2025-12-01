@@ -6,10 +6,17 @@ import { client } from '@/lib/db/drizzle';
 import { runSequenceWorker } from '@/lib/workers/sequence-worker';
 import { withLogContext, getLogger } from '@/lib/logger';
 
+const DEFAULT_IDLE_DELAY_MS = Number.parseInt(process.env.SEQUENCE_WORKER_IDLE_DELAY_MS ?? '30000', 10);
+const DEFAULT_ACTIVE_DELAY_MS = Number.parseInt(process.env.SEQUENCE_WORKER_ACTIVE_DELAY_MS ?? '2000', 10);
+const DEFAULT_ERROR_DELAY_MS = Number.parseInt(process.env.SEQUENCE_WORKER_ERROR_DELAY_MS ?? '60000', 10);
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 function parseArgs() {
   const args = process.argv.slice(2);
   let limit: number | undefined;
   let teamId: number | undefined;
+  let once = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -62,41 +69,98 @@ function parseArgs() {
       continue;
     }
 
+    if (arg === '--once') {
+      once = true;
+      continue;
+    }
+
     if (arg === '--help' || arg === '-h') {
-      console.log('Usage: pnpm worker:run [--limit <number>] [--team <teamId>]');
+      console.log('Usage: pnpm worker:run [--limit <number>] [--team <teamId>] [--once]');
       exit(0);
     }
   }
 
-  return { limit, teamId } as const;
+  return { limit, teamId, once } as const;
 }
 
 async function main() {
   const options = parseArgs();
+  const logger = getLogger();
+  const workerId = randomUUID();
+  let stopRequested = false;
+  let consecutiveErrors = 0;
+  let totalRuns = 0;
 
-  await withLogContext({ requestId: randomUUID(), component: 'sequence-worker-cli' }, async () => {
-    const logger = getLogger();
-    logger.info({ options }, 'Running sequence worker');
+  const handleStopSignal = (signal: NodeJS.Signals) => {
+    logger.info({ signal, workerId }, 'Sequence worker received stop signal');
+    stopRequested = true;
+  };
+
+  process.once('SIGINT', handleStopSignal);
+  process.once('SIGTERM', handleStopSignal);
+
+  await withLogContext({ requestId: workerId, component: 'sequence-worker-cli' }, async () => {
+    logger.info({ options, workerId }, 'Starting sequence worker loop');
 
     try {
-      const result = await runSequenceWorker(options);
-      logger.info({
-        scanned: result.scanned,
-        sent: result.sent,
-        failed: result.failed,
-        retried: result.retried,
-        skipped: result.skipped,
-        durationMs: result.durationMs
-      }, 'Sequence worker completed');
+      do {
+        totalRuns += 1;
+        const iterationId = randomUUID();
+        const startedAt = Date.now();
+        let delayMs = DEFAULT_IDLE_DELAY_MS;
 
-      if (result.details.length > 0) {
-        logger.info({ details: result.details }, 'Sequence worker task outcomes');
-      }
+        try {
+          const result = await runSequenceWorker(options);
+          consecutiveErrors = 0;
 
-      if (result.diagnostics) {
-        logger.info({ diagnostics: result.diagnostics }, 'Sequence worker diagnostics snapshot');
-      }
+          logger.info({
+            iterationId,
+            workerId,
+            scanned: result.scanned,
+            sent: result.sent,
+            failed: result.failed,
+            retried: result.retried,
+            skipped: result.skipped,
+            durationMs: result.durationMs
+          }, 'Sequence worker run completed');
+
+          if (result.details.length > 0) {
+            logger.debug({ iterationId, workerId, details: result.details }, 'Sequence worker task outcomes');
+          }
+
+          if (result.diagnostics) {
+            logger.info({ iterationId, workerId, diagnostics: result.diagnostics }, 'Sequence worker diagnostics snapshot');
+          }
+
+          const hadActivity = result.sent > 0 || result.retried > 0 || result.failed > 0;
+          delayMs = hadActivity ? DEFAULT_ACTIVE_DELAY_MS : DEFAULT_IDLE_DELAY_MS;
+        } catch (error) {
+          consecutiveErrors += 1;
+          delayMs = DEFAULT_ERROR_DELAY_MS * Math.min(consecutiveErrors, 5);
+          logger.error({ iterationId, workerId, err: error, consecutiveErrors }, 'Sequence worker run failed');
+        }
+
+        const runtimeMs = Date.now() - startedAt;
+        const remainingDelay = Math.max(0, delayMs - runtimeMs);
+
+        if (options.once) {
+          break;
+        }
+
+        if (stopRequested) {
+          logger.info({ workerId }, 'Stop requested, exiting worker loop');
+          break;
+        }
+
+        if (remainingDelay > 0) {
+          logger.debug({ workerId, delayMs: remainingDelay }, 'Sequence worker sleeping before next run');
+          await sleep(remainingDelay);
+        }
+      } while (!stopRequested);
     } finally {
+      logger.info({ workerId, totalRuns }, 'Sequence worker shutting down');
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
       await client.end({ timeout: 5 });
     }
   });

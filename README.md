@@ -78,7 +78,8 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 
 Set the `SEQUENCE_WORKER_SECRET` environment variable to a strong random string. This value is required to authenticate scheduled runs of the sequence delivery worker.
 
-- Run the worker manually with `pnpm worker:run [--limit <count>] [--team <teamId>]` during development.
+- Run the worker in watch mode with `pnpm worker:run [--limit <count>] [--team <teamId>]`. The script now stays alive, re-running after every pass until you stop it (use `--once` if you only want a single pass).
+- Fine-tune loop cadence with `SEQUENCE_WORKER_IDLE_DELAY_MS`, `SEQUENCE_WORKER_ACTIVE_DELAY_MS`, and `SEQUENCE_WORKER_ERROR_DELAY_MS` (all in milliseconds, defaults are 30000/2000/60000).
 - Configure a cron job (e.g. Vercel Cron) to call `GET /api/internal/cron/sequence-worker?token=<SEQUENCE_WORKER_SECRET>` on a cadence that fits your sending limits. Optional query parameters:
 	- `limit`: Maximum deliveries to process in a single run (defaults to 25)
 	- `teamId`: Restrict a run to one workspace
