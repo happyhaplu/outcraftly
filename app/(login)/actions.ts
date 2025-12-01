@@ -160,7 +160,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     redirect('/dashboard');
   } catch (error) {
     // Allow normal Next.js redirect flow without logging as an error
-    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+    if ((error instanceof Error && error.message.includes('NEXT_REDIRECT')) || (error as any)?.digest?.startsWith('NEXT_REDIRECT')) {
       throw error; // expected redirect control flow
     }
     console.error('[signIn] Unhandled error during sign-in:', error);
@@ -330,7 +330,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
     redirect('/dashboard');
   } catch (error) {
     // Allow normal Next.js redirect flow without logging as an error
-    if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+    if ((error instanceof Error && error.message.includes('NEXT_REDIRECT')) || (error as any)?.digest?.startsWith('NEXT_REDIRECT')) {
       throw error;
     }
     console.error('[signUp] Unhandled error during sign-up:', error);

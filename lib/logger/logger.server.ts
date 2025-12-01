@@ -49,6 +49,7 @@ declare global {
 
 // Patch console on the server only. This ensures any server-side console.* calls
 // are forwarded to pino with contextual information from AsyncLocalStorage.
+/*
 if (typeof window === 'undefined' && !globalThis.__structuredConsolePatched) {
   globalThis.__structuredConsolePatched = true;
 
@@ -74,3 +75,4 @@ if (typeof window === 'undefined' && !globalThis.__structuredConsolePatched) {
    
   (console as any).debug = wrap('debug');
 }
+*/

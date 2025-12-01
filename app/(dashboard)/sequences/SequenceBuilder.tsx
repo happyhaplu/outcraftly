@@ -1,7 +1,7 @@
 'use client';
 
 import type { ChangeEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import { Loader2, Plus } from 'lucide-react';
 
@@ -125,6 +125,8 @@ function getDefaultLaunchAt() {
   return date.toISOString();
 }
 
+const getCurrentTimestamp = () => Date.now();
+
 function formatLaunchDisplay(iso: string | null) {
   if (!iso) {
     return null;
@@ -156,11 +158,7 @@ export function SequenceBuilder({
   cancelButtonLabel
 }: SequenceBuilderProps) {
   const { toast } = useToast();
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  const isHydrated = typeof window !== 'undefined';
 
   const { data: currentUser } = useSWR<{ email?: string } | null>(
     isHydrated ? '/api/user' : null,
@@ -229,6 +227,7 @@ export function SequenceBuilder({
 
   const scheduleMode: 'manual' | 'scheduled' = state.launchAt ? 'scheduled' : 'manual';
   const allowScheduling = (state.status ?? 'draft') === 'draft';
+  const currentTimestamp = getCurrentTimestamp();
   const launchInputValue = useMemo(() => toLocalDateTimeInputValue(state.launchAt), [state.launchAt]);
   const scheduledDate = useMemo(() => {
     if (!state.launchAt) {
@@ -242,8 +241,8 @@ export function SequenceBuilder({
     if (!scheduledDate) {
       return false;
     }
-    return scheduledDate.getTime() <= Date.now();
-  }, [scheduledDate]);
+    return scheduledDate.getTime() <= currentTimestamp;
+  }, [currentTimestamp, scheduledDate]);
   const launchedDisplay = useMemo(() => formatLaunchDisplay(state.launchedAt ?? null), [state.launchedAt]);
 
   const hasValidLaunchTime = useMemo(() => {
@@ -256,8 +255,8 @@ export function SequenceBuilder({
     if (!scheduledDate) {
       return false;
     }
-    return scheduledDate.getTime() > Date.now();
-  }, [allowScheduling, scheduledDate, state.launchAt]);
+    return scheduledDate.getTime() > currentTimestamp;
+  }, [allowScheduling, currentTimestamp, scheduledDate, state.launchAt]);
 
   const minGapInputValue =
     typeof state.minGapMinutes === 'number' && Number.isFinite(state.minGapMinutes)

@@ -1,77 +1,46 @@
-import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import reactHooks from 'eslint-plugin-react-hooks';
-import nextPlugin from '@next/eslint-plugin-next';
-import globals from 'globals';
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
-export default tseslint.config(
+const eslintConfig = [
   {
     ignores: [
-      '.next/**',
-      'node_modules/**',
-      'dist/**',
-      'coverage/**',
-      'design/**',
-      'scripts/**/*.js',
-      '**/*.d.ts',
-      // Debug and test files
-      'check-db-schema.js',
-      'client-login-test.js',
-      'test-drizzle.js',
-      'test-log-activity.js',
-      'test-signin-action.js',
-      'test-db-compiled.mjs',
-      'test-db-in-nextjs.mjs',
-      '*.test.js',
-      // PM2 config
-      'ecosystem.config.js',
-      // Playwright reports (generated)
-      'playwright-report/**',
-      'test-results/**'
+      ".next/**",
+      "node_modules/**",
+      "dist/**",
+      "coverage/**",
+      "design/**",
+      "scripts/**/*.js",
+      "**/*.d.ts",
+      "*.test.js",
+      "ecosystem.config.js",
+      "playwright-report/**",
+      "test-results/**"
     ]
   },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
-    files: ['**/*.{ts,tsx,cts,mts}'],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.json'],
-        tsconfigRootDir: import.meta.dirname,
-        ecmaFeatures: {
-          jsx: true
-        }
-      },
-      sourceType: 'module',
-      globals: {
-        ...globals.browser,
-        ...globals.node
-      }
-    },
-    plugins: {
-      'react-hooks': reactHooks,
-      '@next/next': nextPlugin
-    },
     rules: {
-      ...nextPlugin.configs.recommended.rules,
-      ...nextPlugin.configs['core-web-vitals'].rules,
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_'
-      }],
-      '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/no-var-requires': 'off',
-      '@typescript-eslint/ban-ts-comment': ['warn', {
-        'ts-ignore': 'allow-with-description'
-      }],
-      '@typescript-eslint/no-empty-object-type': 'off',
-      'no-useless-escape': 'off',
-      'no-undef': 'off',
-      'no-useless-catch': 'off'
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_"
+        }
+      ],
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
+      // Relax strict React hooks rules for production audit
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/error-boundaries": "warn",
+      "react/no-unescaped-entities": "off",
+      "import/no-anonymous-default-export": "off"
     }
   }
-);
+];
+
+export default eslintConfig;

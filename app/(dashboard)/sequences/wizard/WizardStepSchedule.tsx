@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useMemo } from 'react';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,35 @@ export type WizardStepScheduleProps = {
 };
 
 const pad = (value: number) => value.toString().padStart(2, '0');
+
+const FALLBACK_TIMEZONES = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Kolkata',
+  'Asia/Tokyo',
+  'Australia/Sydney'
+];
+
+const getAvailableTimezones = () => {
+  try {
+    const intlWithSupport = Intl as typeof Intl & { supportedValuesOf?: (key: string) => readonly string[] };
+    const supported = typeof intlWithSupport.supportedValuesOf === 'function'
+      ? intlWithSupport.supportedValuesOf('timeZone')
+      : null;
+    if (supported && Array.isArray(supported) && supported.length > 0) {
+      return supported as string[];
+    }
+  } catch (_error) {
+    // ignore and fall back
+  }
+  return FALLBACK_TIMEZONES;
+};
 
 const toLocalInputValue = (iso: string | null) => {
   if (!iso) {
@@ -53,36 +82,7 @@ export function WizardStepSchedule({
   const sendDays = schedule.sendDays ?? [];
   const sendWindows = schedule.sendWindows ?? [];
 
-  const [timezones, setTimezones] = useState<string[]>([]);
-
-  useEffect(() => {
-    // try to use Intl.supportedValuesOf when available, otherwise fall back to a curated list
-    try {
-      // @ts-ignore - supportedValuesOf may not exist in all runtimes
-      const values = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : null;
-      if (values && Array.isArray(values) && values.length > 0) {
-        setTimezones(values as string[]);
-        return;
-      }
-    } catch (_e) {
-      // fall through
-    }
-
-    // curated fallback list
-    setTimezones([
-      'UTC',
-      'America/New_York',
-      'America/Chicago',
-      'America/Denver',
-      'America/Los_Angeles',
-      'Europe/London',
-      'Europe/Paris',
-      'Europe/Berlin',
-      'Asia/Kolkata',
-      'Asia/Tokyo',
-      'Australia/Sydney'
-    ]);
-  }, []);
+  const timezones = useMemo(() => getAvailableTimezones(), []);
 
   const daysOfWeek = useMemo(() => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], []);
 

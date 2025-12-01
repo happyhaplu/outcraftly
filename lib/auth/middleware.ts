@@ -53,7 +53,7 @@ export function validatedAction<S extends z.ZodType<any, any>, T>(schema: S, act
         },
         'validatedAction.unhandled_error'
       );
-      if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      if ((error instanceof Error && error.message.includes('NEXT_REDIRECT')) || (error as any)?.digest?.startsWith('NEXT_REDIRECT')) {
         throw error;
       }
       return { error: error instanceof Error ? error.message : 'An unexpected error. Please try again.' };
@@ -105,7 +105,7 @@ export function validatedActionWithUser<S extends z.ZodType<any, any>, T>(schema
     } catch (err) {
       const error = err as any;
       logger.error({ err: { name: error?.name, message: error?.message, digest: error?.digest, stack: error?.stack } }, 'validatedActionWithUser.unhandled_error');
-      if (error instanceof Error && error.message.includes('NEXT_REDIRECT')) {
+      if ((error instanceof Error && error.message.includes('NEXT_REDIRECT')) || (error as any)?.digest?.startsWith('NEXT_REDIRECT')) {
         throw error;
       }
       return { error: error instanceof Error ? error.message : 'An unexpected error. Please try again.' };

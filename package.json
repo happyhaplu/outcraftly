@@ -2,11 +2,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "tsc --project tsconfig.build.json && next build",
+    "build": "tsc --project tsconfig.build.json && next build && node scripts/patch-routes-manifest.mjs",
     "start": "next start",
     "start:staging": "next start --hostname 0.0.0.0 --port 3000",
     "start:forced": "node custom-server.mjs",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "next lint",
     "db:setup": "npx tsx lib/db/setup.ts",
     "db:setup:ci": "tsx scripts/db-setup-ci.ts",
     "db:seed": "npx tsx lib/db/seed.ts",
@@ -78,7 +78,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
-    "@eslint/js": "^9.39.1",
+    "@eslint/eslintrc": "^3.3.3",
     "@next/eslint-plugin-next": "^16.0.5",
     "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "^6.6.3",
@@ -88,14 +88,13 @@
     "@vitest/coverage-v8": "^2.1.8",
     "autocannon": "^8.0.0",
     "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-config-next": "16.1.0-canary.9",
     "globals": "^16.5.0",
     "jsdom": "27.2.0",
     "pg": "^8.16.3",
     "playwright": "^1.56.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript-eslint": "^8.46.4",
     "vitest": "^2.1.8"
   }
 }

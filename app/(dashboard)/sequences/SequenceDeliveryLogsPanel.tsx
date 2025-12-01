@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { AlertCircle, Calendar, Loader2, RefreshCcw, Search, User } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -95,7 +95,11 @@ type SequenceDeliveryLogsPanelProps = {
 	sequenceId: string;
 };
 
-export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPanelProps) {
+export function SequenceDeliveryLogsPanel(props: SequenceDeliveryLogsPanelProps) {
+	return <SequenceDeliveryLogsPanelInner key={props.sequenceId} {...props} />;
+}
+
+function SequenceDeliveryLogsPanelInner({ sequenceId }: SequenceDeliveryLogsPanelProps) {
 	const [status, setStatus] = useState<'all' | DeliveryLogStatus>('all');
 	const [page, setPage] = useState(1);
 	const [pageSize, setPageSize] = useState(20);
@@ -121,12 +125,6 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 	const total = data?.total ?? 0;
 	const totalPages = data?.totalPages ?? 0;
 
-	useEffect(() => {
-		if (totalPages > 0 && page > totalPages) {
-			setPage(totalPages);
-		}
-	}, [page, totalPages]);
-
 	const handleApplyFilters = () => {
 		setContactFilter(contactInput.trim() === '' ? undefined : contactInput.trim());
 		setFromFilter(fromInput.trim() === '' ? undefined : fromInput.trim());
@@ -150,13 +148,15 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 		handleApplyFilters();
 	};
 
-	useEffect(() => {
+	const handleStatusChange = (nextStatus: 'all' | DeliveryLogStatus) => {
+		setStatus(nextStatus);
 		setPage(1);
-	}, [status, pageSize]);
+	};
 
-	useEffect(() => {
+	const handlePageSizeChange = (nextSize: number) => {
+		setPageSize(nextSize);
 		setPage(1);
-	}, [sequenceId]);
+	};
 
 	const pageInfo = useMemo(() => {
 		if (total === 0) {
@@ -218,7 +218,7 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 								<button
 									key={option.value}
 									type="button"
-									onClick={() => setStatus(option.value)}
+									onClick={() => handleStatusChange(option.value)}
 									className={cn(
 										'rounded-full border px-3 py-1 text-sm font-medium transition-colors',
 										status === option.value
@@ -234,7 +234,7 @@ export function SequenceDeliveryLogsPanel({ sequenceId }: SequenceDeliveryLogsPa
 						<div className="flex items-center gap-2">
 							<select
 								value={pageSize}
-								onChange={(event) => setPageSize(Number(event.target.value))}
+								onChange={(event) => handlePageSizeChange(Number(event.target.value))}
 								className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm focus:outline-none"
 							>
 								{PAGE_SIZE_OPTIONS.map((size) => (

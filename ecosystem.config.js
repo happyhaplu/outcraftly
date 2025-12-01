@@ -14,26 +14,62 @@ console.log('[PM2 Config] Environment variables loaded from .env');
 module.exports = {
   apps: [
     {
-      name: 'outcraftly-staging',
+      name: 'outcraftly-app',
       script: 'pnpm',
-      args: 'start:staging',
+      args: 'start',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
-      cwd: '/home/ubuntu/outcraftly-staging',
       env: {
         ...envConfig.parsed,
-        HOST: '0.0.0.0',
-        __NEXT_PRIVATE_HOST: 'staging.outcraftly.com'
-      },  // ✅ PRIMARY FIX: Pass env vars directly to child process
-      error_file: '~/.pm2/logs/outcraftly-staging-error.log',
-      out_file: '~/.pm2/logs/outcraftly-staging-out.log',
+        NODE_ENV: 'production'
+      },
+      error_file: '~/.pm2/logs/outcraftly-app-error.log',
+      out_file: '~/.pm2/logs/outcraftly-app-out.log',
       time: true,
       kill_timeout: 5000,
       wait_ready: true,
       listen_timeout: 10000,
+      node_args: '--dns-result-order=ipv4first'
+    },
+    {
+      name: 'outcraftly-worker',
+      script: 'pnpm',
+      args: 'worker:run',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        ...envConfig.parsed,
+        NODE_ENV: 'production'
+      },
+      error_file: '~/.pm2/logs/outcraftly-worker-error.log',
+      out_file: '~/.pm2/logs/outcraftly-worker-out.log',
+      time: true,
+      kill_timeout: 5000,
+      node_args: '--dns-result-order=ipv4first'
+    },
+    {
+      name: 'outcraftly-reply',
+      script: 'pnpm',
+      args: 'reply:run',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        ...envConfig.parsed,
+        NODE_ENV: 'production'
+      },
+      error_file: '~/.pm2/logs/outcraftly-reply-error.log',
+      out_file: '~/.pm2/logs/outcraftly-reply-out.log',
+      time: true,
+      kill_timeout: 5000,
       node_args: '--dns-result-order=ipv4first'
     }
   ]

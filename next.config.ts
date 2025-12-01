@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       ]
     }
   },
+  serverExternalPackages: ['drizzle-orm', 'postgres'],
   logging: {
     fetches: {
       fullUrl: true

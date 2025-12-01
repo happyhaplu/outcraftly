@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Loader2, Tag } from 'lucide-react';
 
 import {
@@ -28,12 +28,13 @@ export function BulkTagModal({ open, onOpenChange, onSubmit, isSubmitting, selec
   const [tagInput, setTagInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) {
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
       setTagInput('');
       setError(null);
     }
-  }, [open]);
+    onOpenChange(next);
+  };
 
   const handleSubmit = async () => {
     const tags = parseTags(tagInput);
@@ -52,7 +53,7 @@ export function BulkTagModal({ open, onOpenChange, onSubmit, isSubmitting, selec
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !isSubmitting && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next) => !isSubmitting && handleOpenChange(next)}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add tags to selected contacts</DialogTitle>
