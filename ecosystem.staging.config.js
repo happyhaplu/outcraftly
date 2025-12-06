@@ -1,7 +1,7 @@
 const dotenv = require('dotenv');
 const path = require('path');
 
-// Load .env file
+// Load .env file from staging directory
 const envConfig = dotenv.config({ path: path.join(__dirname, '.env') });
 
 if (envConfig.error) {
@@ -9,15 +9,15 @@ if (envConfig.error) {
   process.exit(1);
 }
 
-console.log('[PM2 Config] Environment variables loaded from .env');
+console.log('[PM2 Config] Staging environment variables loaded from .env');
 
 module.exports = {
   apps: [
     {
-      name: 'outcraftly-app',
+      name: 'staging-app',
       script: 'pnpm',
       args: 'start',
-      cwd: '/home/ubuntu/outcraftly-production',
+      cwd: '/home/ubuntu/outcraftly-staging',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -25,10 +25,11 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         ...envConfig.parsed,
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3100
       },
-      error_file: '/home/ubuntu/.pm2/logs/outcraftly-app-error.log',
-      out_file: '/home/ubuntu/.pm2/logs/outcraftly-app-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/staging-app-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/staging-app-out.log',
       time: true,
       kill_timeout: 5000,
       wait_ready: true,
@@ -36,10 +37,10 @@ module.exports = {
       node_args: '--dns-result-order=ipv4first'
     },
     {
-      name: 'outcraftly-worker',
+      name: 'staging-worker',
       script: 'pnpm',
       args: 'worker:run',
-      cwd: '/home/ubuntu/outcraftly-production',
+      cwd: '/home/ubuntu/outcraftly-staging',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -47,19 +48,20 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         ...envConfig.parsed,
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3100
       },
-      error_file: '/home/ubuntu/.pm2/logs/outcraftly-worker-error.log',
-      out_file: '/home/ubuntu/.pm2/logs/outcraftly-worker-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/staging-worker-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/staging-worker-out.log',
       time: true,
       kill_timeout: 5000,
       node_args: '--dns-result-order=ipv4first'
     },
     {
-      name: 'outcraftly-reply',
+      name: 'staging-reply',
       script: 'pnpm',
       args: 'reply:run',
-      cwd: '/home/ubuntu/outcraftly-production',
+      cwd: '/home/ubuntu/outcraftly-staging',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -67,10 +69,11 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         ...envConfig.parsed,
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PORT: 3100
       },
-      error_file: '/home/ubuntu/.pm2/logs/outcraftly-reply-error.log',
-      out_file: '/home/ubuntu/.pm2/logs/outcraftly-reply-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/staging-reply-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/staging-reply-out.log',
       time: true,
       kill_timeout: 5000,
       node_args: '--dns-result-order=ipv4first'
