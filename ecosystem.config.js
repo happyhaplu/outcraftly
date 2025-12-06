@@ -15,7 +15,8 @@ module.exports = {
   apps: [
     {
       name: 'outcraftly-app',
-      script: 'node_modules/next/dist/bin/next',
+      script: './node_modules/next/dist/bin/next',
+      interpreter: 'node',
       args: 'start',
       instances: 1,
       exec_mode: 'fork',

@@ -15,7 +15,8 @@ module.exports = {
   apps: [
     {
       name: 'staging-app',
-      script: 'node_modules/next/dist/bin/next',
+      script: './node_modules/next/dist/bin/next',
+      interpreter: 'node',
       args: 'start',
       cwd: '/home/ubuntu/outcraftly-staging',
       instances: 1,
