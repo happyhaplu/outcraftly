@@ -18,6 +18,7 @@ module.exports = {
       script: './node_modules/next/dist/bin/next',
       interpreter: 'node',
       args: 'start',
+      cwd: '/home/ubuntu/outcraftly-production',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -31,8 +32,8 @@ module.exports = {
         ...envConfig.parsed,
         NODE_ENV: 'production'
       },
-      error_file: '~/.pm2/logs/outcraftly-app-error.log',
-      out_file: '~/.pm2/logs/outcraftly-app-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/outcraftly-app-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/outcraftly-app-out.log',
       time: true,
       wait_ready: true,
       listen_timeout: 30000,
@@ -42,6 +43,7 @@ module.exports = {
       name: 'outcraftly-worker',
       script: 'pnpm',
       args: 'worker:run',
+      cwd: '/home/ubuntu/outcraftly-production',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -55,8 +57,8 @@ module.exports = {
         ...envConfig.parsed,
         NODE_ENV: 'production'
       },
-      error_file: '~/.pm2/logs/outcraftly-worker-error.log',
-      out_file: '~/.pm2/logs/outcraftly-worker-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/outcraftly-worker-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/outcraftly-worker-out.log',
       time: true,
       node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     },
@@ -64,6 +66,7 @@ module.exports = {
       name: 'outcraftly-reply',
       script: 'pnpm',
       args: 'reply:run',
+      cwd: '/home/ubuntu/outcraftly-production',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -77,8 +80,8 @@ module.exports = {
         ...envConfig.parsed,
         NODE_ENV: 'production'
       },
-      error_file: '~/.pm2/logs/outcraftly-reply-error.log',
-      out_file: '~/.pm2/logs/outcraftly-reply-out.log',
+      error_file: '/home/ubuntu/.pm2/logs/outcraftly-reply-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/outcraftly-reply-out.log',
       time: true,
       node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     }
