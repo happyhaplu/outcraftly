@@ -306,10 +306,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-primary text-sm font-semibold text-primary-foreground">
-                O
-              </span>
-              {!isSidebarCollapsed && <span>Outcraftly</span>}
+              <img 
+                src="https://raw.githubusercontent.com/happyhaplu/Outcraftly-assets/refs/heads/main/1764808676915.jpg" 
+                alt="Outcraftly Logo" 
+                className={`h-9 rounded-lg object-contain transition-all ${isSidebarCollapsed ? 'w-9' : 'w-32'}`}
+              />
             </div>
             <div className="flex items-center gap-1">
               <Button
