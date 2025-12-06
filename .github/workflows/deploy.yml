@@ -79,7 +79,11 @@ jobs:
             echo "🚀 Deploying to staging..."
             
             # Stop PM2 apps
-            pm2 delete staging-app staging-worker staging-reply || true
+            /usr/bin/pm2 delete staging-app staging-worker staging-reply || true
+            
+            # Kill any zombie processes
+            pkill -9 -f 'next.*start' || true
+            sleep 3
             
             # Navigate to staging directory
             cd /home/ubuntu/outcraftly-staging
@@ -93,22 +97,19 @@ jobs:
             tar -xzf /tmp/next-build.tar.gz
             rm /tmp/next-build.tar.gz
             
-            # Install dependencies (in case package.json changed)
-            pnpm install --frozen-lockfile
-            
             # Start services
-            pm2 start ecosystem.staging.config.js
-            pm2 save
+            /usr/bin/pm2 start ecosystem.staging.config.js
+            /usr/bin/pm2 save
             
             # Wait for app to be ready
-            sleep 10
+            sleep 15
             
             # Verify deployment
-            if pm2 list | grep -q "staging-app.*online"; then
+            if /usr/bin/pm2 list | grep -q "staging-app.*online"; then
               echo "✅ Staging deployment successful!"
             else
               echo "❌ Staging app failed to start"
-              pm2 logs staging-app --lines 50 --nostream
+              /usr/bin/pm2 logs staging-app --lines 50 --nostream
               exit 1
             fi
           EOF
@@ -199,7 +200,11 @@ jobs:
             echo "🚀 Deploying to production..."
             
             # Stop PM2 apps gracefully
-            pm2 delete outcraftly-app outcraftly-worker outcraftly-reply || true
+            /usr/bin/pm2 delete outcraftly-app outcraftly-worker outcraftly-reply || true
+            
+            # Kill any zombie processes
+            pkill -9 -f 'next.*start' || true
+            sleep 3
             
             # Navigate to production directory
             cd /home/ubuntu/outcraftly-production
@@ -213,22 +218,19 @@ jobs:
             tar -xzf /tmp/next-build.tar.gz
             rm /tmp/next-build.tar.gz
             
-            # Install dependencies (in case package.json changed)
-            pnpm install --frozen-lockfile
-            
             # Start services
-            pm2 start ecosystem.config.js
-            pm2 save
+            /usr/bin/pm2 start ecosystem.config.js
+            /usr/bin/pm2 save
             
             # Wait for app to be ready
-            sleep 15
+            sleep 20
             
             # Verify deployment
-            if pm2 list | grep -q "outcraftly-app.*online"; then
+            if /usr/bin/pm2 list | grep -q "outcraftly-app.*online"; then
               echo "✅ Production deployment successful!"
             else
               echo "❌ Production app failed to start"
-              pm2 logs outcraftly-app --lines 50 --nostream
+              /usr/bin/pm2 logs outcraftly-app --lines 50 --nostream
               exit 1
             fi
           EOF
@@ -257,7 +259,10 @@ jobs:
             cd /home/ubuntu/outcraftly-production
             
             # Stop current processes
-            pm2 delete outcraftly-app outcraftly-worker outcraftly-reply || true
+            /usr/bin/pm2 delete outcraftly-app outcraftly-worker outcraftly-reply || true
+            
+            # Kill any zombie processes
+            pkill -9 -f 'next.*start' || true
             
             # Restore from latest backup if available
             LATEST_BACKUP=$(ls -t /home/ubuntu/backups/db_backup_*.sql.gz 2>/dev/null | head -1)
@@ -271,8 +276,8 @@ jobs:
             git reset --hard HEAD~1
             
             # Restart with previous version
-            pm2 start ecosystem.config.js
-            pm2 save
+            /usr/bin/pm2 start ecosystem.config.js
+            /usr/bin/pm2 save
             
             echo "✅ Rollback completed"
           EOF
