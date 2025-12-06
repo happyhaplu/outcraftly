@@ -21,7 +21,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '800M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production'
@@ -29,10 +33,9 @@ module.exports = {
       error_file: '~/.pm2/logs/outcraftly-app-error.log',
       out_file: '~/.pm2/logs/outcraftly-app-out.log',
       time: true,
-      kill_timeout: 5000,
       wait_ready: true,
-      listen_timeout: 10000,
-      node_args: '--dns-result-order=ipv4first'
+      listen_timeout: 30000,
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=768'
     },
     {
       name: 'outcraftly-worker',
@@ -42,7 +45,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '500M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production'
@@ -50,8 +57,7 @@ module.exports = {
       error_file: '~/.pm2/logs/outcraftly-worker-error.log',
       out_file: '~/.pm2/logs/outcraftly-worker-out.log',
       time: true,
-      kill_timeout: 5000,
-      node_args: '--dns-result-order=ipv4first'
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     },
     {
       name: 'outcraftly-reply',
@@ -61,7 +67,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '500M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production'
@@ -69,8 +79,7 @@ module.exports = {
       error_file: '~/.pm2/logs/outcraftly-reply-error.log',
       out_file: '~/.pm2/logs/outcraftly-reply-out.log',
       time: true,
-      kill_timeout: 5000,
-      node_args: '--dns-result-order=ipv4first'
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     }
   ]
 };
