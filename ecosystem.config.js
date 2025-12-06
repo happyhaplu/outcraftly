@@ -15,7 +15,7 @@ module.exports = {
   apps: [
     {
       name: 'outcraftly-app',
-      script: 'pnpm',
+      script: 'node_modules/.bin/next',
       args: 'start',
       cwd: '/home/ubuntu/outcraftly-production',
       instances: 1,
