@@ -10,6 +10,7 @@ import {
 import { runSequenceWorker } from '@/lib/workers/sequence-worker';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
