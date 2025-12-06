@@ -22,7 +22,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '800M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production',
@@ -31,10 +35,9 @@ module.exports = {
       error_file: '/home/ubuntu/.pm2/logs/staging-app-error.log',
       out_file: '/home/ubuntu/.pm2/logs/staging-app-out.log',
       time: true,
-      kill_timeout: 5000,
       wait_ready: true,
-      listen_timeout: 10000,
-      node_args: '--dns-result-order=ipv4first'
+      listen_timeout: 30000,
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=768'
     },
     {
       name: 'staging-worker',
@@ -45,7 +48,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '500M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production',
@@ -54,8 +61,7 @@ module.exports = {
       error_file: '/home/ubuntu/.pm2/logs/staging-worker-error.log',
       out_file: '/home/ubuntu/.pm2/logs/staging-worker-out.log',
       time: true,
-      kill_timeout: 5000,
-      node_args: '--dns-result-order=ipv4first'
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     },
     {
       name: 'staging-reply',
@@ -66,7 +72,11 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '500M',
+      min_uptime: '30s',
+      max_restarts: 10,
+      restart_delay: 5000,
+      kill_timeout: 10000,
       env: {
         ...envConfig.parsed,
         NODE_ENV: 'production',
@@ -75,8 +85,7 @@ module.exports = {
       error_file: '/home/ubuntu/.pm2/logs/staging-reply-error.log',
       out_file: '/home/ubuntu/.pm2/logs/staging-reply-out.log',
       time: true,
-      kill_timeout: 5000,
-      node_args: '--dns-result-order=ipv4first'
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=480'
     }
   ]
 };
