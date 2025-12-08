@@ -32,7 +32,7 @@ export const createRouteHandler = <TSchema extends SchemaBundle | undefined>(con
   request: NextRequest,
   context: RouteContext
 ) => {
-  const requestId = request.headers.get('x-request-id') ?? randomUUID();
+  const requestId = request?.headers?.get?.('x-request-id') ?? randomUUID();
 
   return withLogContext({ requestId, component: 'api-route' }, async () => {
     const baseLogger = getLogger();
