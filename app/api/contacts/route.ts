@@ -84,5 +84,10 @@ const handler = createRouteHandler({
 });
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  // Bail out during build-time page data collection when request is mock/undefined
+  if (!request?.headers) {
+    const { NextResponse } = await import('next/server');
+    return NextResponse.json({ error: 'Build-time request not supported' }, { status: 400 });
+  }
   return handler(request, context);
 }
