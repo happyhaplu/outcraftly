@@ -45,8 +45,9 @@ const createNoopProxy = (context: 'db' | 'client'): any =>
     }
   );
 
-let client: PostgresClient;
-let db: DrizzleClient;
+// Initialize with noop proxies by default to prevent undefined errors
+let client: PostgresClient = createNoopProxy('client') as PostgresClient;
+let db: DrizzleClient = createNoopProxy('db') as DrizzleClient;
 
 if (!process.env.POSTGRES_URL) {
   if (!allowMissingDb) {
@@ -57,8 +58,7 @@ if (!process.env.POSTGRES_URL) {
     console.warn('[db] POSTGRES_URL not set. Using a no-op database proxy.');
   }
 
-  client = createNoopProxy('client') as PostgresClient;
-  db = createNoopProxy('db') as DrizzleClient;
+  // Already initialized with noop proxies above
 } else {
   const connectionConfig: postgres.Options<{}> = {
     max: Number.parseInt(process.env.POSTGRES_MAX_CONNECTIONS ?? '10', 10),
