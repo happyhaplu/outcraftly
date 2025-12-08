@@ -20,16 +20,26 @@ type DrizzleClient = PostgresJsDatabase<typeof schema>;
 const createNoopProxy = (context: 'db' | 'client'): any =>
   new Proxy(
     () => {
-      throw new Error(missingDbMessage);
+      if (!isBuildPhase) {
+        throw new Error(missingDbMessage);
+      }
+      return createNoopProxy(context);
     },
     {
       get: (_target, prop) => {
         if (prop === 'then') {
           return undefined;
         }
+        if (isBuildPhase) {
+          // During build, return a chainable noop proxy for any property access
+          return createNoopProxy(context);
+        }
         throw new Error(missingDbMessage + ` Accessed property "${String(prop)}" on ${context}.`);
       },
       apply: () => {
+        if (isBuildPhase) {
+          return createNoopProxy(context);
+        }
         throw new Error(missingDbMessage);
       }
     }
