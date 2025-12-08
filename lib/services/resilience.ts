@@ -11,9 +11,12 @@ export type ResilienceErrorCode =
   | 'RETRY_EXHAUSTED';
 
 export class ResilienceError extends Error {
-  constructor(public readonly code: ResilienceErrorCode, message: string, options?: { cause?: unknown }) {
+  public readonly code: ResilienceErrorCode;
+
+  constructor(code: ResilienceErrorCode, message: string, options?: { cause?: unknown }) {
     super(message);
     this.name = 'ResilienceError';
+    this.code = code;
     if (options?.cause !== undefined) {
       (this as any).cause = options.cause;
     }

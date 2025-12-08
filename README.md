@@ -1,304 +1,489 @@
-# Next.js SaaS Starter
+# Next.js SaaS Starter Kit
 
-This is a starter template for building a SaaS application using **Next.js** with support for authentication, Stripe integration for payments, and a dashboard for logged-in users.
+A comprehensive, production-ready SaaS starter kit built with Next.js 15, PostgreSQL, Stripe, and modern web technologies. This project provides a complete foundation for building scalable Software-as-a-Service applications with authentication, payments, team management, and a beautiful UI component library.
 
-**Demo: [https://next-saas-start.vercel.app/](https://next-saas-start.vercel.app/)**
+## 🚀 Project Overview
 
-## Features
+This SaaS starter kit is designed to accelerate your development process by providing:
 
-- Marketing landing page (`/`) with animated Terminal element
-- Pricing page (`/pricing`) which connects to Stripe Checkout
-- Dashboard pages with CRUD operations on users/teams
-- Basic RBAC with Owner and Member roles
-- Subscription management with Stripe Customer Portal
-- Email/password authentication with JWTs stored to cookies
-- Global middleware to protect logged-in routes
-- Local middleware to protect Server Actions or validate Zod schemas
-- Activity logging system for any user events
+- **Complete Authentication System** - JWT-based auth with secure session management
+- **Multi-tenant Architecture** - Team-based organization with role-based access control
+- **Stripe Integration** - Subscription billing, customer portal, and webhooks
+- **Modern UI Components** - Radix UI primitives with Tailwind CSS styling
+- **Type-safe Database** - Drizzle ORM with PostgreSQL and migrations
+- **Production Ready** - Middleware, error handling, and security best practices
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-- **Framework**: [Next.js](https://nextjs.org/)
-- **Database**: [Postgres](https://www.postgresql.org/)
-- **ORM**: [Drizzle](https://orm.drizzle.team/)
-- **Payments**: [Stripe](https://stripe.com/)
-- **UI Library**: [shadcn/ui](https://ui.shadcn.com/)
+### Core Framework
+- **Next.js 15** - React framework with App Router (using canary build)
+- **React 19** - Latest React with concurrent features
+- **TypeScript** - Full type safety throughout the application
+- **Tailwind CSS 4.1.7** - Utility-first CSS framework with latest features
 
-## Getting Started
+### Database & ORM
+- **PostgreSQL** - Robust relational database
+- **Drizzle ORM** - Type-safe SQL ORM with migrations
+- **Drizzle Kit** - Database introspection and migration tools
 
+### Authentication & Security
+- **JWT (jose)** - JSON Web Tokens for session management
+- **bcryptjs** - Password hashing with salt rounds
+- **Custom Middleware** - Route protection and session refresh
+- **Zod** - Runtime type validation for forms and APIs
+
+### Payments & Billing
+- **Stripe** - Complete payment processing and subscription management
+- **Webhooks** - Real-time subscription status updates
+- **Customer Portal** - Self-service billing management
+
+### UI & Components
+- **Radix UI** - Unstyled, accessible UI primitives
+- **Lucide React** - Beautiful icon library
+- **Class Variance Authority** - Component variant management
+- **SWR** - Data fetching with caching and revalidation
+
+### Development Tools
+- **Docker Compose** - Containerized development environment
+- **ESLint & Prettier** - Code linting and formatting
+- **PostCSS** - CSS processing and optimization
+
+## 📁 Project Structure
+
+```
+├── app/                          # Next.js App Router
+│   ├── (dashboard)/             # Protected dashboard routes
+│   │   ├── layout.tsx           # Dashboard layout with navigation
+│   │   ├── page.tsx            # Main dashboard page
+│   │   ├── terminal.tsx        # Terminal component (placeholder)
+│   │   ├── dashboard/          # Dashboard sub-routes
+│   │   │   ├── activity/       # User activity logs
+│   │   │   ├── general/        # General settings
+│   │   │   └── security/       # Security settings
+│   │   └── pricing/            # Subscription pricing page
+│   ├── (login)/                # Authentication routes
+│   │   ├── actions.ts          # Server actions for auth
+│   │   ├── login.tsx           # Login form component
+│   │   ├── sign-in/           # Sign-in page
+│   │   └── sign-up/           # Sign-up page
+│   ├── api/                    # API routes
+│   │   ├── stripe/            # Stripe webhook handlers
+│   │   ├── team/              # Team management API
+│   │   └── user/              # User management API
+│   ├── globals.css            # Global styles
+│   ├── layout.tsx             # Root layout with SWR config
+│   └── not-found.tsx          # 404 page
+│
+├── components/                  # Reusable UI components
+│   └── ui/                     # Base UI components (Radix + Tailwind)
+│       ├── avatar.tsx
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── dropdown-menu.tsx
+│       ├── input.tsx
+│       ├── label.tsx
+│       └── radio-group.tsx
+│
+├── design/                     # Design system and UI vision
+│   ├── src/components/        # Complete component library
+│   │   ├── contacts/          # Contact management components
+│   │   ├── layout/           # Layout and navigation components
+│   │   └── ui/               # Comprehensive UI component set
+│   └── pages/                # Example pages and features
+│       ├── Analytics.tsx     # Analytics dashboard
+│       ├── Contacts.tsx      # Contact management
+│       ├── Dashboard.tsx     # Main dashboard
+│       ├── Sequences.tsx     # Email sequences
+│       └── Settings.tsx      # Application settings
+│
+├── lib/                        # Core application logic
+│   ├── auth/                  # Authentication utilities
+│   │   ├── middleware.ts      # Auth middleware helpers
+│   │   └── session.ts         # JWT session management
+│   ├── db/                    # Database configuration
+│   │   ├── drizzle.ts        # Database connection
+│   │   ├── schema.ts         # Database schema definitions
+│   │   ├── queries.ts        # Common database queries
+│   │   ├── seed.ts           # Database seeding
+│   │   ├── setup.ts          # Database initialization
+│   │   └── migrations/       # SQL migration files
+│   ├── payments/             # Payment processing
+│   │   ├── actions.ts        # Payment server actions
+│   │   └── stripe.ts         # Stripe integration
+│   └── utils.ts              # Utility functions
+│
+├── middleware.ts              # Next.js middleware for route protection
+├── drizzle.config.ts         # Drizzle ORM configuration
+├── next.config.ts            # Next.js configuration
+├── docker-compose.yml        # Development environment setup
+└── package.json              # Dependencies and scripts
+```
+
+## 🔥 Features
+
+### Authentication & User Management
+- **JWT Session Management** - Secure token-based authentication
+- **Password Security** - bcrypt hashing with salt rounds
+- **Route Protection** - Middleware-based access control
+- **Session Refresh** - Automatic token renewal on valid requests
+- **User Registration** - Email validation and secure account creation
+- **Login/Logout** - Complete authentication flow
+
+**Implementation:**
+- Session tokens stored in HTTP-only cookies
+- Automatic session refresh on page navigation
+- Protected routes redirect to sign-in
+- Password validation with minimum length requirements
+
+### Team & Multi-tenancy
+- **Team Creation** - Automatic team creation on user registration
+- **Team Membership** - Role-based access (owner, admin, member)
+- **Invitations** - Email-based team member invitations
+- **Activity Logging** - Comprehensive audit trail
+- **Team Settings** - Configurable team preferences
+
+**Database Schema:**
+- `users` - User accounts and authentication
+- `teams` - Team/organization data
+- `team_members` - Many-to-many relationship with roles
+- `invitations` - Pending team invitations
+- `activity_logs` - User and team activity tracking
+
+### Stripe Payment Integration
+- **Subscription Billing** - Recurring payment processing
+- **Customer Portal** - Self-service billing management
+- **Trial Periods** - 14-day free trial for new subscriptions
+- **Webhook Handling** - Real-time subscription status updates
+- **Multiple Plans** - Support for different pricing tiers
+- **Proration** - Automatic billing adjustments for plan changes
+
+**Features:**
+- Checkout session creation with trial periods
+- Customer portal for subscription management
+- Webhook validation and processing
+- Subscription status synchronization
+- Price and product management
+
+### Database & ORM
+- **Type-safe Schema** - Drizzle ORM with TypeScript
+- **Migrations** - Version-controlled database changes
+- **Relations** - Properly defined foreign key relationships
+- **Queries** - Optimized database access patterns
+- **Seeding** - Development data setup
+
+**Schema Design:**
+```typescript
+// Core entities with relationships
+users -> team_members <- teams
+teams -> activity_logs
+teams -> invitations
+users -> invitations (invited_by)
+```
+
+### UI Component System
+- **Radix UI Primitives** - Accessible, unstyled components
+- **Tailwind Styling** - Utility-first CSS approach
+- **Component Variants** - CVA for consistent styling
+- **Design Tokens** - Centralized color and spacing system
+- **Responsive Design** - Mobile-first responsive layouts
+
+**Available Components:**
+- Form elements (input, button, label, radio-group)
+- Layout components (card, avatar)
+- Navigation (dropdown-menu)
+- Data display (tables, lists, avatars)
+- Feedback (alerts, toasts, loading states)
+
+### API Architecture
+- **RESTful Endpoints** - Standard HTTP methods and status codes
+- **Server Actions** - Next.js server-side form handling
+- **Type Validation** - Zod schemas for request validation
+- **Error Handling** - Consistent error responses
+- **Middleware Integration** - Authentication and authorization
+
+**API Routes:**
+- `/api/user` - User profile management
+- `/api/team` - Team operations and member management
+- `/api/stripe/checkout` - Payment processing
+- `/api/stripe/webhook` - Stripe event handling
+
+### Design System Vision
+The `design/` folder contains a comprehensive UI vision including:
+
+- **Analytics Dashboard** - Charts, metrics, and KPI displays
+- **Contact Management** - CRM-style contact organization
+- **Email Sequences** - Marketing automation interfaces
+- **Settings Pages** - User and team configuration
+- **Advanced Components** - Tables, forms, modals, charts
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+ 
+- PostgreSQL database
+- Stripe account (for payments)
+- pnpm package manager
+
+### Installation
+
+1. **Clone the repository**
 ```bash
-git clone https://github.com/nextjs/saas-starter
+git clone <repository-url>
 cd saas-starter
+```
+
+2. **Install dependencies**
+```bash
 pnpm install
 ```
 
-## Running Locally
+3. **Environment Setup**
+Create a `.env.local` file with the following variables:
+```env
+# Database
+POSTGRES_URL="postgresql://username:password@localhost:5432/database"
 
-[Install](https://docs.stripe.com/stripe-cli) and log in to your Stripe account:
+# Authentication
+AUTH_SECRET="your-32-character-secret-key"
 
-```bash
-stripe login
+# Stripe
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_PUBLISHABLE_KEY="pk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+
+# Application
+BASE_URL="http://localhost:3000"
 ```
 
-Use the included setup script to create your `.env` file:
-
+4. **Database Setup**
 ```bash
+# Initialize database
 pnpm db:setup
-```
 
-Run the database migrations and seed the database with a default user and team:
-
-```bash
+# Run migrations
 pnpm db:migrate
+
+# Seed with sample data (optional)
 pnpm db:seed
+
+# Open Drizzle Studio (optional)
+pnpm db:studio
 ```
 
-This will create the following user and team:
-
-- User: `test@test.com`
-- Password: `admin123`
-
-You can also create new users through the `/sign-up` route.
-
-Finally, run the Next.js development server:
-
+5. **Start Development Server**
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to see the app in action.
+The application will be available at `http://localhost:3000`.
 
-You can listen for Stripe webhooks locally through their CLI to handle subscription change events:
+### Docker Development (Alternative)
 
+1. **Start PostgreSQL with Docker**
 ```bash
-stripe listen --forward-to localhost:3000/api/stripe/webhook
+docker-compose up -d
 ```
 
-### Sequence worker
-
-Set the `SEQUENCE_WORKER_SECRET` environment variable to a strong random string. This value is required to authenticate scheduled runs of the sequence delivery worker.
-
-- Run the worker in watch mode with `pnpm worker:run [--limit <count>] [--team <teamId>]`. The script now stays alive, re-running after every pass until you stop it (use `--once` if you only want a single pass).
-- Fine-tune loop cadence with `SEQUENCE_WORKER_IDLE_DELAY_MS`, `SEQUENCE_WORKER_ACTIVE_DELAY_MS`, and `SEQUENCE_WORKER_ERROR_DELAY_MS` (all in milliseconds, defaults are 30000/2000/60000).
-- Configure a cron job (e.g. Vercel Cron) to call `GET /api/internal/cron/sequence-worker?token=<SEQUENCE_WORKER_SECRET>` on a cadence that fits your sending limits. Optional query parameters:
-	- `limit`: Maximum deliveries to process in a single run (defaults to 25)
-	- `teamId`: Restrict a run to one workspace
-
-The endpoint returns a JSON payload with the worker metrics so you can monitor executions from your scheduler.
-
-### Trial expiry automation
-
-- Run the trial clean-up manually with `pnpm trial:expire`. The script deactivates every account whose trial window lapsed and logs the affected user emails.
-- Schedule the command in your hosting provider (e.g. Vercel Cron, GitHub Actions, or a traditional cron job) to execute once per day so newly expired trials are blocked automatically.
-- Set the `BASE_URL` and database environment variables in the scheduled job so the script can connect to Postgres. The command exits cleanly after closing the pooled connection.
-
-### Sequence lifecycle statuses
-
-- Newly created sequences now start in a **Draft** state. Launch them via the dashboard when you are ready to begin sending.
-- Draft sequences cannot accept enrollments until they are launched (the UI will prompt you to resume/launch first).
-- Apply the migrations `lib/db/migrations/0019_add_sequence_draft_status.sql` and `lib/db/migrations/0020_add_sequence_launch_at.sql` after pulling these changes. If you are using Drizzle Kit, run:
-
+2. **Run database setup**
 ```bash
+pnpm db:setup
 pnpm db:migrate
 ```
 
-If you manage migrations manually, execute the SQL file against your database before deploying.
-
-## Testing Payments
-
-To test Stripe payments, use the following test card details:
-
-- Card Number: `4242 4242 4242 4242`
-- Expiration: Any future date
-- CVC: Any 3-digit number
-
-## Going to Production
-
-When you're ready to deploy your SaaS application to production, follow these steps:
-
-### Set up a production Stripe webhook
-
-1. Go to the Stripe Dashboard and create a new webhook for your production environment.
-2. Set the endpoint URL to your production API route (e.g., `https://yourdomain.com/api/stripe/webhook`).
-3. Select the events you want to listen for (e.g., `checkout.session.completed`, `customer.subscription.updated`).
-
-### Deploy to Vercel
-
-1. Push your code to a GitHub repository.
-2. Connect your repository to [Vercel](https://vercel.com/) and deploy it.
-3. Follow the Vercel deployment process, which will guide you through setting up your project.
-
-### Add environment variables
-
-In your Vercel project settings (or during deployment), add all the necessary environment variables. Make sure to update the values for the production environment, including:
-
-1. `BASE_URL`: Set this to your production domain.
-2. `STRIPE_SECRET_KEY`: Use your Stripe secret key for the production environment.
-3. `STRIPE_WEBHOOK_SECRET`: Use the webhook secret from the production webhook you created in step 1.
-4. `POSTGRES_URL`: Set this to your production database URL.
-5. `AUTH_SECRET`: Set this to a random string. `openssl rand -base64 32` will generate one.
-
-## Production Variables Matrix
-
-| Variable | Purpose | Required | Example |
-| --- | --- | --- | --- |
-| `POSTGRES_URL` | Connection string for the Postgres database | Yes | `postgresql://postgres:postgres@localhost:54322/postgres` |
-| `STRIPE_SECRET_KEY` | Stripe API key for billing operations | Yes | `sk_live_...` |
-| `STRIPE_WEBHOOK_SECRET` | Verifies Stripe webhook signatures | Yes | `whsec_...` |
-| `BASE_URL` | Public site URL used in links and callbacks | Yes | `https://yourdomain.com` |
-| `AUTH_SECRET` | JWT signing key for user sessions (32+ bytes) | Yes | Output of `openssl rand -base64 32` |
-| `SENDER_CREDENTIALS_KEY` | Encryption key for stored SMTP credentials | Yes | `your-32-character-secret-must-be-long` |
-| `SEQUENCE_EVENTS_SECRET` | Authenticates webhook events from sequence tracker | Yes | `random-sequence-events-secret` |
-| `SEQUENCE_WORKER_SECRET` | Protects `/api/internal/cron/sequence-worker` endpoint | Yes | `random-sequence-worker-token` |
-| `REPLY_WORKER_SECRET` | Protects `/api/internal/cron/reply-worker` endpoint | Yes | `random-reply-worker-token` |
-| `MIN_SEND_INTERVAL_MINUTES` | Overrides default pacing interval between sends | No (defaults to `5`) | `5` |
-| `DEBUG_INBOUND` | Enables verbose inbound mail logging | No (defaults to `false`) | `false` |
-
-### Generating Strong Secrets
-
-Create secure values for `AUTH_SECRET` and `SENDER_CREDENTIALS_KEY` before deploying:
-
+3. **Start development server**
 ```bash
-openssl rand -base64 32
+pnpm dev
 ```
 
-Store the generated strings in your production environment provider.
+## 🧪 Testing & Validation
 
-## Deployment Checklist
+### Database Testing
+- **Schema Validation** - Drizzle validates types at compile time
+- **Migration Testing** - Test migrations with `pnpm db:migrate`
+- **Query Testing** - Use Drizzle Studio to inspect data
 
-1. **Install dependencies**
+### Authentication Testing
+1. **User Registration** - Test sign-up flow with email validation
+2. **Login/Logout** - Verify session creation and destruction
+3. **Route Protection** - Test middleware redirection
+4. **Session Refresh** - Verify automatic token renewal
 
-   ```bash
-   pnpm install
-   ```
+### Payment Testing
+1. **Stripe Test Mode** - Use Stripe test cards for checkout
+2. **Webhook Testing** - Use Stripe CLI for local webhook testing
+3. **Subscription Flow** - Test complete billing cycle
 
-2. **Apply database migrations and seed baseline data**
+### API Testing
+- **Form Validation** - Test Zod schema validation
+- **Error Handling** - Verify proper error responses
+- **Authorization** - Test protected endpoint access
 
-   ```bash
-   pnpm db:migrate && pnpm db:seed
-   ```
+## 📋 Available Scripts
 
-3. **Build and smoke-test the production bundle**
+```bash
+# Development
+pnpm dev                 # Start development server with Turbopack
+pnpm build              # Build for production
+pnpm start              # Start production server
 
-   ```bash
-   pnpm build && pnpm start
-   ```
+# Database
+pnpm db:setup           # Initialize database
+pnpm db:generate        # Generate migration files
+pnpm db:migrate         # Run pending migrations
+pnpm db:seed           # Seed database with sample data
+pnpm db:studio         # Open Drizzle Studio
+```
 
-4. **Configure workers**
-   - Set `SEQUENCE_WORKER_SECRET` and `REPLY_WORKER_SECRET` in your hosting provider.
-   - Schedule the sequence worker: `curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"`.
-   - Schedule the reply worker: `curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"`.
+## 🔧 Configuration
 
-5. **Stripe webhook setup**
-   - Create or update a Stripe webhook pointing to `$BASE_URL/api/stripe/webhook`.
-   - Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
-
-6. **Cron job examples**
-
-   Example GitHub Actions snippet to invoke the workers nightly:
-
-   ```yaml
-   name: Worker Cron
-   on:
-     schedule:
-       - cron: '0 * * * *'
-   jobs:
-     sequence-worker:
-       runs-on: ubuntu-latest
-       steps:
-         - name: Trigger sequence worker
-           run: |
-             curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
-           env:
-             BASE_URL: ${{ secrets.BASE_URL }}
-             SEQUENCE_WORKER_SECRET: ${{ secrets.SEQUENCE_WORKER_SECRET }}
-     reply-worker:
-       runs-on: ubuntu-latest
-       steps:
-         - name: Trigger reply worker
-           run: |
-             curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
-           env:
-             BASE_URL: ${{ secrets.BASE_URL }}
-             REPLY_WORKER_SECRET: ${{ secrets.REPLY_WORKER_SECRET }}
-   ```
-
-   Or configure Render Cron with a JSON payload:
-
-   ```json
-   {
-     "tasks": [
-       {
-         "name": "sequence-worker",
-         "schedule": "*/15 * * * *",
-         "command": "curl \"$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET\""
-       },
-       {
-         "name": "reply-worker",
-         "schedule": "0 * * * *",
-         "command": "curl \"$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET\""
-       }
-     ]
-   }
-   ```
-
-  ## Workers and Cron Jobs
-
-  Use the following authenticated curl calls from your scheduler to invoke the workers:
-
-  ```bash
-  curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
-  curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
-  ```
-
-  - Sequence worker: run every 5–15 minutes to keep enrollments flowing smoothly without overrunning your provider limits.
-  - Reply worker: run every 15–30 minutes so inbound responses are processed promptly.
-  - Required environment variables: `BASE_URL`, `SEQUENCE_WORKER_SECRET`, and `REPLY_WORKER_SECRET` must be present in the scheduler context.
-
-  Example Render Cron configuration:
-
-  ```json
-  {
-    "tasks": [
-      {
-        "name": "sequence-worker",
-        "schedule": "*/10 * * * *",
-        "command": "curl \"$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET\""
-      },
-      {
-        "name": "reply-worker",
-        "schedule": "*/30 * * * *",
-        "command": "curl \"$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET\""
-      }
-    ]
+### Next.js Configuration
+```typescript
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    ppr: true,                  // Partial Pre-rendering
+    clientSegmentCache: true,   // Client-side caching
+    nodeMiddleware: true        // Node.js middleware support
   }
-  ```
+};
+```
 
-  Example GitHub Actions workflow if you prefer to schedule via Actions:
+### Database Configuration
+```typescript
+// drizzle.config.ts
+export default {
+  schema: './lib/db/schema.ts',
+  out: './lib/db/migrations',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: process.env.POSTGRES_URL!,
+  },
+} satisfies Config;
+```
 
-  ```yaml
-  name: Worker Cron
-  on:
-    schedule:
-      - cron: '*/10 * * * *'
-  jobs:
-    sequence-worker:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Trigger sequence worker
-          run: |
-            curl "$BASE_URL/api/internal/cron/sequence-worker?token=$SEQUENCE_WORKER_SECRET"
-          env:
-            BASE_URL: ${{ secrets.BASE_URL }}
-            SEQUENCE_WORKER_SECRET: ${{ secrets.SEQUENCE_WORKER_SECRET }}
-    reply-worker:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Trigger reply worker
-          run: |
-            curl "$BASE_URL/api/internal/cron/reply-worker?token=$REPLY_WORKER_SECRET"
-          env:
-            BASE_URL: ${{ secrets.BASE_URL }}
-            REPLY_WORKER_SECRET: ${{ secrets.REPLY_WORKER_SECRET }}
-  ```
+### Tailwind Configuration
+- Custom color palette for brand consistency
+- Component-specific styling patterns
+- Responsive breakpoint system
+- Dark mode support ready
 
+## 🔐 Security Features
+
+### Authentication Security
+- JWT tokens with expiration
+- HTTP-only secure cookies
+- CSRF protection via SameSite cookies
+- Password hashing with bcrypt
+- Session invalidation on logout
+
+### Route Protection
+- Middleware-based access control
+- Automatic redirects for unauthenticated users
+- Role-based authorization
+- Protected API endpoints
+
+### Data Security
+- SQL injection prevention via Drizzle ORM
+- Input validation with Zod schemas
+- Environment variable protection
+- Database connection encryption
+
+## 🚀 Deployment
+
+### Environment Variables
+Ensure all production environment variables are set:
+- `POSTGRES_URL` - Production database connection
+- `AUTH_SECRET` - Cryptographically secure secret
+- `STRIPE_SECRET_KEY` - Production Stripe key
+- `BASE_URL` - Production domain URL
+
+### Database Migration
+```bash
+pnpm db:migrate  # Run in production environment
+```
+
+### Build Process
+```bash
+pnpm build      # Optimized production build
+pnpm start      # Start production server
+```
+
+## 🤝 Contributing
+
+### Development Workflow
+1. Create feature branch from main
+2. Implement changes with proper types
+3. Test authentication and payment flows
+4. Update documentation if needed
+5. Submit pull request with detailed description
+
+### Code Standards
+- TypeScript strict mode enabled
+- ESLint configuration for consistency
+- Proper error handling patterns
+- Component composition over inheritance
+- Server actions for form handling
+
+### Database Changes
+1. Update schema in `lib/db/schema.ts`
+2. Generate migration: `pnpm db:generate`
+3. Test migration: `pnpm db:migrate`
+4. Update queries if needed
+
+## 🗺️ Roadmap
+
+### Immediate Features (Based on Design Folder)
+- **Analytics Dashboard** - Revenue, user growth, and engagement metrics
+- **Contact Management** - CRM functionality with import/export
+- **Email Sequences** - Marketing automation workflows
+- **Advanced Settings** - User preferences and team configuration
+- **Billing History** - Invoice management and payment history
+
+### Planned Enhancements
+- **API Documentation** - OpenAPI/Swagger integration
+- **Email Services** - Transactional email with templates
+- **File Uploads** - S3/CloudFlare R2 integration
+- **Search Functionality** - Full-text search across entities
+- **Audit Logging** - Enhanced activity tracking
+- **Webhooks** - Custom webhook system for integrations
+
+### UI/UX Improvements
+- **Charts & Graphs** - Data visualization components
+- **Advanced Tables** - Sorting, filtering, pagination
+- **Modal System** - Consistent modal management
+- **Toast Notifications** - User feedback system
+- **Loading States** - Skeleton screens and spinners
+
+### Performance Optimizations
+- **Database Indexing** - Query optimization
+- **Caching Strategy** - Redis integration
+- **Image Optimization** - Next.js Image component
+- **Bundle Analysis** - Code splitting optimization
+- **CDN Integration** - Static asset delivery
+
+## 📚 Additional Resources
+
+### Documentation
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Drizzle ORM Guide](https://orm.drizzle.team/docs)
+- [Stripe API Reference](https://stripe.com/docs/api)
+- [Radix UI Primitives](https://www.radix-ui.com/primitives)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+
+### Community
+- Join discussions about SaaS development
+- Share your implementations and improvements
+- Report issues and feature requests
+- Contribute to the growing ecosystem
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Built with ❤️ using Next.js, PostgreSQL, and Stripe**
+
+For questions, issues, or contributions, please refer to the project's GitHub repository.

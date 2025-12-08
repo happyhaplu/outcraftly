@@ -12,7 +12,8 @@ import {
   CardDescription,
   CardHeader
 } from '@/components/ui/card';
-import { Loader2, Sparkles } from 'lucide-react';
+import Logo from '@/components/Logo';
+import { Loader2 } from 'lucide-react';
 import { signIn, signUp } from './actions';
 import { ActionState } from '@/lib/auth/middleware';
 
@@ -40,8 +41,8 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       <div className="w-full max-w-md">
         <Card className="p-0 shadow-xl">
           <CardHeader className="space-y-6 text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary text-white">
-              <Sparkles className="h-6 w-6" />
+            <div className="mx-auto">
+              <Logo className="mx-auto h-14 w-auto rounded-lg" />
             </div>
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold">

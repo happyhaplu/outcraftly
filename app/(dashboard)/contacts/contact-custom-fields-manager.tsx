@@ -335,7 +335,7 @@ export function ContactCustomFieldsManager({ open, onOpenChange }: ContactCustom
         </DialogFooter>
       </DialogContent>
 
-      <Dialog open={formMode !== null} onOpenChange={(next) => (next ? undefined : setFormMode(null))}>
+      <Dialog open={formMode !== null} onOpenChange={(next: boolean) => (next ? undefined : setFormMode(null))}>
         <DialogContent>
           <form onSubmit={handleSubmit} className="space-y-5">
             <DialogHeader>
@@ -425,7 +425,7 @@ export function ContactCustomFieldsManager({ open, onOpenChange }: ContactCustom
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deletingField)} onOpenChange={(next) => (!next ? setDeletingField(null) : undefined)}>
+      <AlertDialog open={Boolean(deletingField)} onOpenChange={(next: boolean) => (!next ? setDeletingField(null) : undefined)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete custom field</AlertDialogTitle>

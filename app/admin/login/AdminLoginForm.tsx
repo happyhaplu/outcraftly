@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { Loader2, ShieldCheck } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
+import Logo from '@/components/Logo';
 import { ActionState } from '@/lib/auth/middleware';
 import { adminSignIn } from '@/app/admin/actions';
 
@@ -27,8 +28,8 @@ export function AdminLoginForm() {
       <div className="w-full max-w-md">
         <Card className="shadow-xl">
           <CardHeader className="space-y-6 text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary text-white">
-              <ShieldCheck className="h-6 w-6" />
+            <div className="mx-auto">
+              <Logo className="mx-auto h-14 w-auto rounded-lg" />
             </div>
             <div className="space-y-1">
               <CardTitle className="text-2xl font-semibold">Admin Access</CardTitle>

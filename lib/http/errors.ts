@@ -12,14 +12,21 @@ export type ErrorCode =
   | 'validation_failed';
 
 export class HttpError extends Error {
+  public readonly status: number;
+  public readonly code: ErrorCode;
+  public readonly details?: Record<string, unknown>;
+
   constructor(
-    public readonly status: number,
-    public readonly code: ErrorCode,
+    status: number,
+    code: ErrorCode,
     message: string,
-    public readonly details?: Record<string, unknown>
+    details?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'HttpError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 

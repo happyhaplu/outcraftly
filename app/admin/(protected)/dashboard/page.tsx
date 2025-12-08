@@ -1,4 +1,10 @@
 import { requireAdmin } from '@/lib/auth/requireAdmin';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Admin Dashboard | Outcraftly',
+  description: 'Platform administration and monitoring dashboard for Outcraftly.'
+};
 
 export default async function AdminDashboardPage() {
   const admin = await requireAdmin();

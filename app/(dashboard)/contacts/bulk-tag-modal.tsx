@@ -53,7 +53,7 @@ export function BulkTagModal({ open, onOpenChange, onSubmit, isSubmitting, selec
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !isSubmitting && handleOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next: boolean) => !isSubmitting && handleOpenChange(next)}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add tags to selected contacts</DialogTitle>

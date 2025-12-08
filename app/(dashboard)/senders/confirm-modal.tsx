@@ -46,7 +46,7 @@ export function ConfirmModal({
           <AlertDialogAction
             variant={confirmVariant}
             className={isLoading ? 'pointer-events-none opacity-80' : undefined}
-            onClick={async (event) => {
+            onClick={async (event: React.MouseEvent<HTMLButtonElement>) => {
               event.preventDefault();
               await onConfirm();
             }}

@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  images: {
+    domains: ['raw.githubusercontent.com']
+  },
   experimental: {
     clientSegmentCache: true,
     nodeMiddleware: true,
@@ -8,7 +11,6 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '2mb',
       allowedOrigins: [
         'staging.outcraftly.com',
-        '155.133.26.49:3000',
         'localhost:3000'
       ]
     }

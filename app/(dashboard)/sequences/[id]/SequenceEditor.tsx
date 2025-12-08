@@ -76,7 +76,9 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
     resetBuilderState(initialBuilderState);
     const baseline = buildPayloadFromState(initialBuilderState);
     baselinePayloadRef.current = baseline;
-    console.log('[SequenceEditor] hydrated initial builder state', initialBuilderState);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SequenceEditor] hydrated initial builder state', initialBuilderState);
+    }
   }, [initialBuilderState, isHydrated, resetBuilderState]);
 
   const isDirty = useMemo(() => {
@@ -93,7 +95,9 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
       return;
     }
     const payload = buildPayloadFromState(builderState);
-    console.log('[SequenceEditor] save payload', payload);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SequenceEditor] save payload', payload);
+    }
 
     if (!payload.name || payload.steps.length === 0) {
       toast({
@@ -122,7 +126,9 @@ export function SequenceEditor({ sequenceId, initialSequence }: SequenceEditorPr
       });
 
       const data = await response.json().catch(() => ({}));
-      console.log('[SequenceEditor] save response', { ok: response.ok, data });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SequenceEditor] save response', { ok: response.ok, data });
+      }
       if (!response.ok) {
         toast({
           title: 'Unable to save sequence',

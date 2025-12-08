@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useState } from 'react';
 import Link from 'next/link';
+import Logo from '@/components/Logo';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -149,7 +150,7 @@ function UserMenu() {
           <DropdownMenuItem
             key={item.label}
             className="cursor-pointer rounded-md"
-            onSelect={(event) => {
+            onSelect={(event: Event) => {
               event.preventDefault();
               if (item.href !== '#') {
                 router.push(item.href);
@@ -306,11 +307,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <img 
-                src="https://raw.githubusercontent.com/happyhaplu/Outcraftly-assets/refs/heads/main/1764808676915.jpg" 
-                alt="Outcraftly Logo" 
-                className={`h-9 rounded-lg object-contain transition-all ${isSidebarCollapsed ? 'w-9' : 'w-32'}`}
-              />
+              <Logo className={`h-11 w-auto rounded-lg object-contain transition-all ${isSidebarCollapsed ? 'w-11' : 'w-36'}`} />
             </div>
             <div className="flex items-center gap-1">
               <Button

@@ -8,8 +8,8 @@ export const fetchCache = 'force-no-store';
 export const experimental_ppr = false;
 
 export const metadata: Metadata = {
-  title: 'Next.js SaaS Starter',
-  description: 'Get started quickly with Next.js, Postgres, and Stripe.'
+  title: 'Outcraftly',
+  description: 'Automate your cold outreach with intelligent email sequences and deliverability monitoring.'
 };
 
 export const viewport: Viewport = {

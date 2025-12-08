@@ -635,7 +635,7 @@ export function ContactList({ initialPage }: ContactListProps) {
 
       <AlertDialog
         open={isDeleteDialogOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open && !isDeleting) {
             setContactToDelete(null);
           }

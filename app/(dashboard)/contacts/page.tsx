@@ -1,5 +1,11 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Suspense } from 'react';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Contacts | Outcraftly',
+  description: 'Manage your prospects and track engagement across all your email sequences.'
+};
 
 import { ContactList } from './contact-list';
 import { getPaginatedContactsForTeam, getTeamForUser } from '@/lib/db/queries';

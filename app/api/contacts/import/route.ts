@@ -19,7 +19,7 @@ import type {
   ImportOptions,
   ImportResponseSummary,
   ImportRow
-} from '@/src/shared/types';
+} from '@/types/shared';
 
 export const runtime = 'nodejs';
 

@@ -1,6 +1,12 @@
 import { getAdminUsers } from '@/lib/db/queries';
 import { Button } from '@/components/ui/button';
 import { AdminUsersTable } from './AdminUsersTable';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Users | Admin | Outcraftly',
+  description: 'Manage user accounts and subscriptions across the Outcraftly platform.'
+};
 
 export const dynamic = 'force-dynamic';
 

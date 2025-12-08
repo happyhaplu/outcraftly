@@ -208,7 +208,7 @@ export function WizardStepSchedule({
 
       <div className="space-y-3">
         <Label>Contact scheduling</Label>
-  <RadioGroup value={mode} onValueChange={(value) => switchMode(value as SequenceScheduleMode)} className="grid gap-3 md:grid-cols-3">
+  <RadioGroup value={mode} onValueChange={(value: string) => switchMode(value as SequenceScheduleMode)} className="grid gap-3 md:grid-cols-3">
           <label
             htmlFor="wizard-schedule-immediate"
             className="flex cursor-pointer flex-col gap-1 rounded-2xl border border-border/60 bg-background px-4 py-4 text-sm shadow-sm transition hover:border-primary/40"

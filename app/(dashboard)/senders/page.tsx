@@ -5,6 +5,12 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Sender Accounts | Outcraftly',
+  description: 'Monitor and manage your email sender accounts to maintain optimal deliverability.'
+};
 
 import { SenderForm } from './sender-form';
 import { SenderList } from './sender-list';

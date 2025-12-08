@@ -1,6 +1,12 @@
 import { Card, CardContent } from '@/components/ui/card';
+import type { Metadata } from 'next';
 
 import { listSequencesForTeam, getTeamForUser } from '@/lib/db/queries';
+
+export const metadata: Metadata = {
+  title: 'Sequences | Outcraftly',
+  description: 'Create and manage automated email sequences for your cold outreach campaigns.'
+};
 
 import { mapSequenceSummary, type RawSequence } from '@/lib/sequences/utils';
 

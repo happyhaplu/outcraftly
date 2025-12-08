@@ -487,7 +487,7 @@ export function SequenceList({ sequences, isLoading, createHref = '/sequences/cr
       </CardContent>
       <AlertDialog
         open={Boolean(deletionTarget)}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           if (!open && !isDeleting) {
             setDeletionTarget(null);
           }

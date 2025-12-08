@@ -1,5 +1,11 @@
 import { getPlans } from '@/lib/db/queries';
 import { AdminPlansTable } from './AdminPlansTable';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Plans | Admin | Outcraftly',
+  description: 'Configure and manage subscription plans for Outcraftly users.'
+};
 
 export const dynamic = 'force-dynamic';
 

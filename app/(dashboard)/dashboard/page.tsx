@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from 'next';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,6 +9,11 @@ import {
   Target,
   Users
 } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: 'Dashboard | Outcraftly',
+  description: 'View your email campaign performance, sequence analytics, and workspace activity.'
+};
 
 import { Button } from "@/components/ui/button";
 import {

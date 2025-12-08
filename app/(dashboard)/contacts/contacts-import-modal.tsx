@@ -28,7 +28,7 @@ import type {
   ImportRow,
   MappingTarget,
   SystemField
-} from '@/src/shared/types';
+} from '@/types/shared';
 
 type Step = 0 | 1 | 2;
 
@@ -384,12 +384,14 @@ export function ContactsImportModal({
       return;
     }
 
-    console.log('[contacts-import] continue clicked', {
-      from: 'upload',
-      fileName,
-      headers: columns.length,
-      rows: records.length
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[contacts-import] continue clicked', {
+        from: 'upload',
+        fileName,
+        headers: columns.length,
+        rows: records.length
+      });
+    }
 
     handleStepperSelect('mapping');
   }, [canGoToMapping, columns, fileName, handleStepperSelect, records]);
@@ -399,13 +401,15 @@ export function ContactsImportModal({
       return;
     }
 
-    console.log('[contacts-import] continue clicked', {
-      from: 'mapping',
-      to: 'review',
-      mappedColumns: mappedColumns.length,
-      hasEmailMapping,
-      rows: totalRows
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[contacts-import] continue clicked', {
+        from: 'mapping',
+        to: 'review',
+        mappedColumns: mappedColumns.length,
+        hasEmailMapping,
+        rows: totalRows
+      });
+    }
 
     handleStepperSelect('review');
   }, [canGoToReview, handleStepperSelect, hasEmailMapping, mappedColumns, totalRows]);
@@ -666,12 +670,14 @@ export function ContactsImportModal({
           const headerKeys = parsed[0] ? Object.keys(parsed[0]) : [];
 
           if (parsed.length === 0) {
-            console.log('[contacts-import] parsed CSV', {
-              fileName: file.name,
-              headers: 0,
-              rows: 0,
-              sampleRows: 0
-            });
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[contacts-import] parsed CSV', {
+                fileName: file.name,
+                headers: 0,
+                rows: 0,
+                sampleRows: 0
+              });
+            }
             setRecords([]);
             setColumns([]);
             setMapping(() => ({}));
@@ -680,12 +686,14 @@ export function ContactsImportModal({
             setUploadError('The CSV file does not contain any data rows.');
             setStep(0);
           } else {
-            console.log('[contacts-import] parsed CSV', {
-              fileName: file.name,
-              headers: headerKeys.length,
-              rows: parsed.length,
-              sampleRows: Math.min(parsed.length, CSV_PREVIEW_LIMIT)
-            });
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[contacts-import] parsed CSV', {
+                fileName: file.name,
+                headers: headerKeys.length,
+                rows: parsed.length,
+                sampleRows: Math.min(parsed.length, CSV_PREVIEW_LIMIT)
+              });
+            }
             setRecords(parsed);
             setColumns(headerKeys);
             setMapping(() => ({}));
@@ -774,12 +782,14 @@ export function ContactsImportModal({
         }
       }
 
-      console.log('[contacts-import] import triggered', {
-        rows: transformedRows.length,
-        mappedColumns: mappedColumns.length,
-        hasEmailMapping,
-        pendingCustomFieldCount: pendingKeysInUse.size
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[contacts-import] import triggered', {
+          rows: transformedRows.length,
+          mappedColumns: mappedColumns.length,
+          hasEmailMapping,
+          pendingCustomFieldCount: pendingKeysInUse.size
+        });
+      }
 
       const customFieldMetadata = pendingKeysInUse.size
         ? Array.from(pendingKeysInUse).map((key) => ({

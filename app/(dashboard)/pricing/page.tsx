@@ -1,5 +1,11 @@
 import { Check } from 'lucide-react';
+import type { Metadata } from 'next';
 import { getStripePrices, getStripeProducts } from '@/lib/payments/stripe';
+
+export const metadata: Metadata = {
+  title: 'Pricing | Outcraftly',
+  description: 'Choose the perfect plan for your cold email outreach needs.'
+};
 import { SubmitButton } from './submit-button';
 import {
   Card,
