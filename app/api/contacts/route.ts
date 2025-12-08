@@ -16,6 +16,7 @@ import { AuthError, ForbiddenError, WorkspaceError } from '@/lib/http/errors';
 import { sanitizeObject } from '@/lib/http/response';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const querySchema = z
   .object({
