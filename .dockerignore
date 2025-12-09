@@ -1,16 +1,16 @@
-# Dependencies
-node_modules
-
 # Git metadata
 .git
+.gitignore
 
 # Logs
 logs
 *.log
 
-# Build cache
-.next/cache
+# Build artifacts (will be rebuilt)
+.next
 coverage
+test-results
+playwright-report
 
 # Environment files
 .env
@@ -23,3 +23,11 @@ coverage
 .DS_Store
 docker-data
 volumes
+
+# Test files (not needed in production)
+tests
+e2e
+**/*.test.ts
+**/*.spec.ts
+vitest.config.ts
+playwright.config.ts
