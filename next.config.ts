@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
       ]
     }
   },
-  serverExternalPackages: ['drizzle-orm', 'postgres'],
+  serverExternalPackages: ['drizzle-orm', 'postgres', 'isomorphic-dompurify', 'jsdom'],
   logging: {
     fetches: {
       fullUrl: true
