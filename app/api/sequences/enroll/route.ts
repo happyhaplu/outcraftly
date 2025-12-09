@@ -10,6 +10,7 @@ import {
   TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
 import { sequenceEnrollmentSchema } from '@/lib/validation/sequence';
+import { runSequenceWorker } from '@/lib/workers/sequence-worker';
 
 export const runtime = 'nodejs';
 
@@ -47,6 +48,13 @@ export async function POST(request: Request) {
         parsed.data.contactIds,
         parsed.data.schedule ?? undefined
       );
+
+      // Trigger worker to process newly enrolled contacts (fire and forget)
+      if (result.enrolled > 0) {
+        runSequenceWorker({ teamId: team.id, limit: result.enrolled }).catch((err) => {
+          console.error('Failed to run sequence worker after enrollment:', err);
+        });
+      }
 
       return NextResponse.json(
         {

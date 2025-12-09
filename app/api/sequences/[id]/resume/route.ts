@@ -9,6 +9,7 @@ import {
   TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
 import { sequenceIdSchema } from '@/lib/validation/sequence';
+import { runSequenceWorker } from '@/lib/workers/sequence-worker';
 
 export const runtime = 'nodejs';
 
@@ -39,6 +40,11 @@ export async function POST(_request: Request, context: any) {
     if (!updated) {
       return NextResponse.json({ error: 'Sequence not found' }, { status: 404 });
     }
+
+    // Trigger worker to process pending emails (fire and forget)
+    runSequenceWorker({ teamId: team.id }).catch((err) => {
+      console.error('Failed to run sequence worker after resume:', err);
+    });
 
     return NextResponse.json({
       message: 'Sequence resumed',
