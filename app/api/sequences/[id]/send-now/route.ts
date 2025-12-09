@@ -11,6 +11,7 @@ import {
   UnauthorizedError,
   TRIAL_EXPIRED_ERROR_MESSAGE
 } from '@/lib/db/queries';
+import { runSequenceWorker } from '@/lib/workers/sequence-worker';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 
@@ -92,6 +93,11 @@ export async function POST(_request: Request, context: any) {
         lastUpdated: now
       })
       .where(and(eq(contactSequenceStatus.id, statusId), eq(contactSequenceStatus.sequenceId, statusRow.sequenceId)));
+
+    // Trigger worker to send the email immediately (fire and forget)
+    runSequenceWorker({ teamId: team.id, limit: 1 }).catch((err) => {
+      console.error('Failed to run sequence worker after send-now:', err);
+    });
 
     return NextResponse.json({
       success: true,
