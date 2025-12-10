@@ -5,8 +5,7 @@
  * Usage: tsx scripts/monitor-connections.ts
  */
 
-import { client, db } from '@/lib/db/drizzle';
-import { sql } from 'drizzle-orm';
+import { client } from '@/lib/db/drizzle';
 
 async function checkDatabaseConnections() {
   console.log('\n=== Database Connection Status ===\n');
