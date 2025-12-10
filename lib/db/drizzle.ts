@@ -62,10 +62,12 @@ if (!process.env.POSTGRES_URL) {
 } else {
   const connectionConfig: postgres.Options<{}> = {
     max: Number.parseInt(process.env.POSTGRES_MAX_CONNECTIONS ?? '10', 10),
-    idle_timeout: Number.parseInt(process.env.POSTGRES_IDLE_TIMEOUT ?? '5', 10),
+    idle_timeout: Number.parseInt(process.env.POSTGRES_IDLE_TIMEOUT ?? '30', 10),
+    max_lifetime: Number.parseInt(process.env.POSTGRES_MAX_LIFETIME ?? '3600', 10),
     connect_timeout: Number.parseInt(process.env.POSTGRES_CONNECT_TIMEOUT ?? '10', 10),
     ssl: 'require',
     prepare: false, // Required for PgBouncer/connection poolers
+    onnotice: () => {}, // Suppress notices to reduce noise
   };
   
   client = postgres(process.env.POSTGRES_URL, connectionConfig);

@@ -30,7 +30,8 @@
     "test:load": "tsx scripts/load-test.ts",
     "worker:run": "tsx scripts/run-sequence-worker.ts",
     "trial:expire": "tsx scripts/expire-trial-users.ts",
-    "reply:run": "tsx scripts/run-reply-worker.ts"
+    "reply:run": "tsx scripts/run-reply-worker.ts",
+    "monitor": "tsx scripts/monitor-connections.ts"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

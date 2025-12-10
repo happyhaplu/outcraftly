@@ -23,7 +23,7 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '800M',
+      max_memory_restart: '1024M',
       min_uptime: '30s',
       max_restarts: 10,
       restart_delay: 5000,
@@ -38,7 +38,7 @@ module.exports = {
       time: true,
       wait_ready: true,
       listen_timeout: 30000,
-      node_args: '--dns-result-order=ipv4first --max-old-space-size=768'
+      node_args: '--dns-result-order=ipv4first --max-old-space-size=896'
     },
     {
       name: 'staging-worker',
@@ -49,7 +49,8 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '500M',
+      max_memory_restart: '768M',
+      cron_restart: '0 */6 * * *',
       min_uptime: '30s',
       max_restarts: 10,
       restart_delay: 5000,

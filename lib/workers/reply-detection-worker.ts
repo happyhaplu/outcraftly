@@ -399,7 +399,14 @@ class Pop3MailClient implements MailClient {
       const client = this.client!;
 
       const cleanup = () => {
-        client.removeAllListeners();
+        try {
+          client.removeAllListeners();
+          if (client && typeof client.quit === 'function') {
+            client.quit();
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
       };
 
       client.on('error', (error: Error) => {
