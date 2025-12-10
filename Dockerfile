@@ -49,6 +49,12 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 
+# Copy migration scripts
+COPY --from=builder /app/scripts ./scripts
+
+# Run database migrations
+RUN pnpm tsx scripts/migrations/add-missing-sequence-columns.ts
+
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app
 
