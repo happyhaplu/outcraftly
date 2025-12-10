@@ -152,6 +152,17 @@ async function main() {
           break;
         }
 
+        // Periodic connection health check every 100 iterations
+        if (totalRuns % 100 === 0) {
+          try {
+            await client`SELECT 1 as health_check`;
+            logger.debug({ workerId, totalRuns }, 'Database connection health check passed');
+          } catch (err) {
+            logger.error({ workerId, err }, 'Database connection health check failed');
+            throw new Error('Database connection unhealthy');
+          }
+        }
+
         if (remainingDelay > 0) {
           logger.debug({ workerId, delayMs: remainingDelay }, 'Sequence worker sleeping before next run');
           await sleep(remainingDelay);
